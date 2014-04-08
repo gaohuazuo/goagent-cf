@@ -710,7 +710,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
-        headers['Connection'] = 'close'
+        if 'Connection' not in headers:
+            headers['Connection'] = 'close'
         self.send_response(status)
         for key, value in headers.items():
             self.send_header(key, value)
@@ -719,6 +720,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def STRIPSSL(self):
         """strip ssl"""
+        self.auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
         certfile = CertUtil.get_cert(self.host)
         logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
         self.send_response(200)
@@ -749,6 +751,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         self.scheme = 'https'
+        for key, value in self.auth_headers.items():
+            if not self.headers.get(key):
+                self.headers[key] = value
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
@@ -941,6 +946,12 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.host = netloc
             self.port = 443 if self.scheme == 'http' else 80
+        auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
+        original_auth_headers = getattr(self, 'auth_headers', {})
+        if auth_headers or original_auth_headers:
+            for key, value in original_auth_headers.items():
+                if key not in auth_headers:
+                    self.headers[key] = value
         self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
@@ -1464,6 +1475,8 @@ class Common(object):
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
+        self.LISTEN_USERNAME = self.CONFIG.get('listen', 'username') if self.CONFIG.has_option('listen', 'username') else ''
+        self.LISTEN_PASSWORD = self.CONFIG.get('listen', 'password') if self.CONFIG.has_option('listen', 'password') else ''
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
@@ -1759,6 +1772,28 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             del exc_info, error
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
+
+class AuthFilter(BaseProxyHandlerFilter):
+    """authorization filter"""
+    auth_info = "Proxy authentication required"""
+
+    def check_auth_header(self, auth_header):
+        method, _, auth_data = auth_header.partition(' ')
+        if method == 'Basic':
+            username, _, password = base64.b64decode(auth_data).partition(':')
+            if username == common.LISTEN_USERNAME and password == common.LISTEN_PASSWORD:
+                return True
+        return False
+
+    def filter(self, handler):
+        if common.LISTEN_USERNAME:
+            auth_header = handler.headers.get('Proxy-Authorization')
+            if not auth_header or not self.check_auth_header(auth_header):
+                headers = {'Access-Control-Allow-Origin': '*',
+                           'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                           'Content-Length': '0',
+                           'Connection': 'keep-alive'}
+                return [handler.MOCK, 407, headers, '']
 
 class UserAgentFilter(BaseProxyHandlerFilter):
     """user agent filter"""
@@ -2092,7 +2127,7 @@ class ProxyChainMixin:
             hostname = 'www.google.com'
         request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
         if common.PROXY_USERNAME and common.PROXY_PASSWROD:
-            request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (common.PROXY_USERNAME, common.PROXY_PASSWROD)).encode()).decode().strip()
+            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (common.PROXY_USERNAME, common.PROXY_PASSWROD)).encode()).decode().strip()
         request_data += '\r\n'
         sock.sendall(request_data)
         response = httplib.HTTPResponse(sock, buffering=False)
