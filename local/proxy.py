@@ -613,6 +613,33 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
             return [handler.DIRECT]
 
 
+class AuthFilter(BaseProxyHandlerFilter):
+    """authorization filter"""
+    auth_info = "Proxy authentication required"""
+
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
+
+    def check_auth_header(self, auth_header):
+        method, _, auth_data = auth_header.partition(' ')
+        if method == 'Basic':
+            username, _, password = base64.b64decode(auth_data).partition(':')
+            if username == self.username and password == self.password:
+                return True
+        return False
+
+    def filter(self, handler):
+        if handler.has_auth_filter:
+            auth_header = handler.headers.get('Proxy-Authorization')
+            if not auth_header or not self.check_auth_header(auth_header):
+                headers = {'Access-Control-Allow-Origin': '*',
+                           'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                           'Content-Length': '0',
+                           'Connection': 'keep-alive'}
+                return [handler.MOCK, 407, headers, '']
+
+
 class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """SimpleProxyHandler for GoAgent 3.x"""
 
@@ -1773,28 +1800,6 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
 
-class AuthFilter(BaseProxyHandlerFilter):
-    """authorization filter"""
-    auth_info = "Proxy authentication required"""
-
-    def check_auth_header(self, auth_header):
-        method, _, auth_data = auth_header.partition(' ')
-        if method == 'Basic':
-            username, _, password = base64.b64decode(auth_data).partition(':')
-            if username == common.LISTEN_USERNAME and password == common.LISTEN_PASSWORD:
-                return True
-        return False
-
-    def filter(self, handler):
-        if common.LISTEN_USERNAME:
-            auth_header = handler.headers.get('Proxy-Authorization')
-            if not auth_header or not self.check_auth_header(auth_header):
-                headers = {'Access-Control-Allow-Origin': '*',
-                           'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
-                           'Content-Length': '0',
-                           'Connection': 'keep-alive'}
-                return [handler.MOCK, 407, headers, '']
-
 class UserAgentFilter(BaseProxyHandlerFilter):
     """user agent filter"""
     def filter(self, handler):
@@ -2682,6 +2687,9 @@ def pre_start():
     RangeFetch.bufsize = common.AUTORANGE_BUFSIZE
     RangeFetch.waitsize = common.AUTORANGE_WAITSIZE
     GAEProxyHandler.has_auth_filter = any(isinstance(x, AuthFilter) for x in GAEProxyHandler.handler_filters)
+    if common.LISTEN_USERNAME and common.LISTEN_PASSWORD and not GAEProxyHandler.has_auth_filter:
+        GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
+        GAEProxyHandler.has_auth_filter = True
 
 
 def main():
