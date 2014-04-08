@@ -626,6 +626,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     connect_timeout = 8
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
+    has_auth_filter = False
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -720,7 +721,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def STRIPSSL(self):
         """strip ssl"""
-        self.auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
+        if self.has_auth_filter:
+            self.auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
         certfile = CertUtil.get_cert(self.host)
         logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
         self.send_response(200)
@@ -751,9 +753,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         self.scheme = 'https'
-        for key, value in self.auth_headers.items():
-            if not self.headers.get(key):
-                self.headers[key] = value
+        if self.has_auth_filter:
+            for key, value in self.auth_headers.items():
+                if not self.headers.get(key):
+                    self.headers[key] = value
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
@@ -946,12 +949,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.host = netloc
             self.port = 443 if self.scheme == 'http' else 80
-        auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
-        original_auth_headers = getattr(self, 'auth_headers', {})
-        if auth_headers or original_auth_headers:
-            for key, value in original_auth_headers.items():
-                if key not in auth_headers:
-                    self.headers[key] = value
+        if self.has_auth_filter:
+            auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
+            original_auth_headers = getattr(self, 'auth_headers', {})
+            if auth_headers or original_auth_headers:
+                for key, value in original_auth_headers.items():
+                    if key not in auth_headers:
+                        self.headers[key] = value
         self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
@@ -2681,6 +2685,7 @@ def pre_start():
     RangeFetch.maxsize = common.AUTORANGE_MAXSIZE
     RangeFetch.bufsize = common.AUTORANGE_BUFSIZE
     RangeFetch.waitsize = common.AUTORANGE_WAITSIZE
+    GAEProxyHandler.has_auth_filter = any(isinstance(x, AuthFilter) for x in GAEProxyHandler.handler_filters)
 
 
 def main():
