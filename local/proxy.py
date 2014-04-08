@@ -43,6 +43,11 @@ import sys
 import os
 import glob
 
+default_encoding = 'utf-8'
+if sys.getdefaultencoding() != default_encoding:
+    reload(sys)
+    sys.setdefaultencoding(default_encoding)
+
 sys.dont_write_bytecode = True
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
