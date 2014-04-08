@@ -897,7 +897,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         fetchserver = fetchservers[0]
         for i in xrange(max_retry):
             try:
-                response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.max_timeout, **kwargs)
+                response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
                 # appid over qouta, switch to next appid
                 if response.app_status >= 500:
                     message = {503: 'Current APPID Over Quota'}.get(response.status) or 'URLFETCH retrun %s' % response.status
@@ -1094,7 +1094,7 @@ class RangeFetch(object):
                         fetchserver = random.choice(self.fetchservers)
                         if self._last_app_status.get(fetchserver, 200) >= 500:
                             time.sleep(5)
-                        response = self.handler.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.max_timeout, **self.kwargs)
+                        response = self.handler.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, **self.kwargs)
                 except Queue.Empty:
                     continue
                 except Exception as e:
@@ -1179,7 +1179,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key')
+        # cache_key = kwargs.get('cache_key')
         cache_key = ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1193,33 +1193,35 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # disable nagle algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
-                sock.settimeout(timeout or self.max_timeout)
+                sock.settimeout(timeout or self.connect_timeout)
                 # start connection time record
                 start_time = time.time()
                 # TCP connect
                 sock.connect(ipaddr)
                 # record TCP connection time
                 self.tcp_connection_time[ipaddr] = time.time() - start_time
-                # put ssl socket object to output queobj
+                # put tcp socket object to output queobj
                 queobj.put(sock)
             except (socket.error, OSError) as e:
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
-                self.tcp_connection_time[ipaddr] = self.max_timeout+random.random()
+                self.tcp_connection_time[ipaddr] = self.connect_timeout+random.random()
                 # close tcp socket
                 if sock:
                     sock.close()
         def close_connection(count, queobj, first_tcp_time):
             for _ in range(count):
                 sock = queobj.get()
-                tcp_time_threshold = min(1, 1.5 * first_tcp_time)
                 if sock and not isinstance(sock, Exception):
-                    ipaddr = sock.getpeername()
-                    if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
-                        self.ssl_connection_cache[cache_key].put((time.time(), sock))
-                    else:
-                        sock.close()
+                    sock.close()
+                # tcp_time_threshold = min(1, 1.5 * first_tcp_time)
+                # if sock and not isinstance(sock, Exception):
+                #     ipaddr = sock.getpeername()
+                #     if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
+                #         self.ssl_connection_cache[cache_key].put((time.time(), sock))
+                #     else:
+                #         sock.close()
         try:
             while cache_key:
                 ctime, sock = self.tcp_connection_cache[cache_key].get_nowait()
@@ -1231,23 +1233,19 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             pass
         result = None
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
-        if port == 443:
-            get_connection_time = lambda addr: self.ssl_connection_time.__getitem__(addr) or self.tcp_connection_time.__getitem__(addr)
-        else:
-            get_connection_time = self.tcp_connection_time.__getitem__
         errors = []
         for i in range(3):
-            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
-            addresses.sort(key=get_connection_time)
-            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
-            queobj = Queue.Queue()
+            window = min((self.max_window+1)//2, len(addresses))
+            addresses.sort(key=self.tcp_connection_time.__getitem__)
+            addrs = addresses[:window] + random.sample(addresses, window)
+            queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, (socket.error, OSError)):
-                    ipaddr = result.getpeername()
-                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, self.tcp_connection_time[ipaddr]))
+                    # ipaddr = result.getpeername()
+                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, None))
                     return result
                 else:
                     if i == 0:
@@ -1272,7 +1270,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
-                sock.settimeout(timeout or self.max_timeout)
+                sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
                 if not validate:
                     ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
@@ -1326,7 +1324,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
-                sock.settimeout(timeout or self.max_timeout)
+                sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
                 server_hostname = b'www.google.com' if hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
@@ -1359,7 +1357,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
-                self.ssl_connection_time[ipaddr] = self.max_timeout + random.random()
+                self.ssl_connection_time[ipaddr] = self.connect_timeout + random.random()
                 # close ssl socket
                 if ssl_sock:
                     ssl_sock.close()
@@ -1387,10 +1385,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         result = None
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
         for i in range(3):
-            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
+            window = min((self.max_window+1)//2, len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
-            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
-            queobj = Queue.Queue()
+            addrs = addresses[:window] + random.sample(addresses, window)
+            queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
             errors = []
@@ -1624,7 +1622,7 @@ class Common(object):
                 logging.error('resolve remote host=%r failed: %s', host, e)
                 queue.put((host, dnsservers, []))
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
-        google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
+        google_blacklist = ['216.239.32.20'] + list(common.DNS_BLACKLIST)
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
                 continue
