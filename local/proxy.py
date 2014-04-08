@@ -797,22 +797,29 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         local = self.connection
         max_retry = int(kwargs.get('max_retry', 3))
         remote = None
-        for i in xrange(max_retry):
+        self.send_response(200)
+        self.end_headers()
+        self.close_connection = 1
+        data = local.recv(1024)
+        for i in xrange(5):
             try:
                 if do_ssl_handshake:
                     remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
                 else:
                     remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
                 if remote and not isinstance(remote, Exception):
-                    self.send_response(200)
-                    self.send_header('Connection', 'close')
-                    self.end_headers()
+                    remote.sendall(data)
                     break
+                else:
+                    logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e or 'Failed')
             except Exception as e:
                 logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
                 if i == max_retry - 1:
                     raise
         logging.info('%s "FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
+        if hasattr(remote, 'fileno'):
+            # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
+            remote.settimeout(None)
         try:
             tick = 1
             bufsize = self.bufsize
