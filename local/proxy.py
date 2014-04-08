@@ -753,10 +753,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         self.scheme = 'https'
-        if self.has_auth_filter:
-            for key, value in self.auth_headers.items():
-                if not self.headers.get(key):
-                    self.headers[key] = value
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
