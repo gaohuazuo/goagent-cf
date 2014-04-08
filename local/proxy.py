@@ -1760,6 +1760,13 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
 
+class UserAgentFilter(BaseProxyHandlerFilter):
+    """user agent filter"""
+    def filter(self, handler):
+        if common.USERAGENT_ENABLE:
+            handler.headers['User-Agent'] = common.USERAGENT_STRING
+
+
 class WithGAEFilter(BaseProxyHandlerFilter):
     """with gae filter"""
     def filter(self, handler):
@@ -1918,8 +1925,8 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 
 
 class GAEProxyHandler(AdvancedProxyHandler):
-    """GAE Proxy Handler 2"""
-    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), AutoRangeFilter(), GAEFetchFilter()]
+    """GAE Proxy Handler"""
+    handler_filters = [UserAgentFilter(), WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), AutoRangeFilter(), GAEFetchFilter()]
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
@@ -2018,9 +2025,9 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
 
 
 class PHPProxyHandler(AdvancedProxyHandler):
-    """PHP Proxy Handler 2"""
+    """PHP Proxy Handler"""
     first_run_lock = threading.Lock()
-    handler_filters = [FakeHttpsFilter(), ForceHttpsFilter(), PHPFetchFilter()]
+    handler_filters = [UserAgentFilter(), FakeHttpsFilter(), ForceHttpsFilter(), PHPFetchFilter()]
 
     def first_run(self):
         if common.PHP_USEHOSTS:
