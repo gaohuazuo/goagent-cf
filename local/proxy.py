@@ -2211,6 +2211,7 @@ class GreenForwardMixin:
 
     def FORWARD(self, hostname, port, timeout, kwargs={}):
         """forward socket"""
+        self.close_connection = 1
         bufsize = kwargs.pop('bufsize', 8192)
         do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
         local = self.connection
