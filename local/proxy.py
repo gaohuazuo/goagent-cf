@@ -829,7 +829,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if hasattr(socket, 'MSG_PEEK'):
                             peek_data = remote.recv(1, socket.MSG_PEEK)
                             if not peek_data:
-                                logging.warning('create_connection(%r, %r) return %r after ClientHello', hostname, port, peek_data)
+                                logging.info('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
                                 remote.close()
                                 continue
                     break
@@ -1211,8 +1211,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        # cache_key = kwargs.get('cache_key')
-        cache_key = ''
+        cache_key = kwargs.get('cache_key')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1245,19 +1244,17 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         def close_connection(count, queobj, first_tcp_time):
             for _ in range(count):
                 sock = queobj.get()
+                tcp_time_threshold = min(1, 1.3 * first_tcp_time)
                 if sock and not isinstance(sock, Exception):
-                    sock.close()
-                # tcp_time_threshold = min(1, 1.5 * first_tcp_time)
-                # if sock and not isinstance(sock, Exception):
-                #     ipaddr = sock.getpeername()
-                #     if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
-                #         self.ssl_connection_cache[cache_key].put((time.time(), sock))
-                #     else:
-                #         sock.close()
+                    ipaddr = sock.getpeername()
+                    if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
+                        self.tcp_connection_cache[cache_key].put((time.time(), sock))
+                    else:
+                        sock.close()
         try:
             while cache_key:
                 ctime, sock = self.tcp_connection_cache[cache_key].get_nowait()
-                if time.time() - ctime < 16:
+                if time.time() - ctime < 30:
                     return sock
                 else:
                     sock.close()
@@ -1276,8 +1273,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, (socket.error, OSError)):
-                    # ipaddr = result.getpeername()
-                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, None))
+                    ipaddr = result.getpeername()
+                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, self.tcp_connection_time[ipaddr]))
                     return result
                 else:
                     if i == 0:
@@ -1399,7 +1396,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         def close_connection(count, queobj, first_tcp_time, first_ssl_time):
             for _ in range(count):
                 sock = queobj.get()
-                ssl_time_threshold = min(1, 1.5 * first_ssl_time)
+                ssl_time_threshold = min(1, 1.3 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
                     if cache_key and sock.ssl_time < ssl_time_threshold:
                         self.ssl_connection_cache[cache_key].put((time.time(), sock))
@@ -1408,7 +1405,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         try:
             while cache_key:
                 ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
-                if time.time() - ctime < 16:
+                if time.time() - ctime < 30:
                     return sock
                 else:
                     sock.close()
