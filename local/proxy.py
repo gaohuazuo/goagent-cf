@@ -603,6 +603,12 @@ def spawn_later(seconds, target, *args, **kwargs):
     return __import__('thread').start_new_thread(wrap, args, kwargs)
 
 
+def is_clienthello(data):
+    if data.startswith('\x16\x03\x01'):
+        length, = struct.unpack('>h', data[3:5])
+        return len(data) == 5 + length
+
+
 class BaseProxyHandlerFilter(object):
     """base proxy handler filter"""
     def filter(self, handler):
@@ -801,6 +807,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = 1
         data = local.recv(1024)
+        data_is_clienthello = is_clienthello(data)
         for i in xrange(5):
             try:
                 if do_ssl_handshake:
@@ -809,11 +816,25 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
                 if remote and not isinstance(remote, Exception):
                     remote.sendall(data)
+                    if data_is_clienthello:
+                        rs, _, es = select.select([remote], [], [remote], timeout)
+                        if not rs or es:
+                            logging.warning('create_connection(%r, %r) return bad fdset %r %r after ClientHello', hostname, port, rs, es)
+                            remote.close()
+                            continue
+                        if hasattr(socket, 'MSG_PEEK'):
+                            peek_data = remote.recv(1, socket.MSG_PEEK)
+                            if not peek_data:
+                                logging.warning('create_connection(%r, %r) return %r after ClientHello', hostname, port, peek_data)
+                                remote.close()
+                                continue
                     break
                 else:
                     logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e or 'Failed')
             except Exception as e:
                 logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
+                if remote and not isinstance(remote, Exception):
+                    remote.close()
                 if i == max_retry - 1:
                     raise
         logging.info('%s "FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
