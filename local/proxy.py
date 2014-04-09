@@ -831,18 +831,18 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
                 if remote and not isinstance(remote, Exception):
                     remote.sendall(data)
-                    if data_is_clienthello:
-                        rs, _, es = select.select([remote], [], [remote], timeout)
-                        if not rs or es:
-                            logging.warning('create_connection(%r, %r) return bad fdset %r %r after ClientHello', hostname, port, rs, es)
-                            remote.close()
-                            continue
-                        if hasattr(socket, 'MSG_PEEK'):
-                            peek_data = remote.recv(1, socket.MSG_PEEK)
-                            if not peek_data:
-                                logging.debug('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
-                                remote.close()
-                                continue
+                    # if data_is_clienthello:
+                    #     rs, _, es = select.select([remote], [], [remote], timeout)
+                    #     if not rs or es:
+                    #         logging.warning('create_connection(%r, %r) return bad fdset %r %r after ClientHello', hostname, port, rs, es)
+                    #         remote.close()
+                    #         continue
+                    #     if hasattr(socket, 'MSG_PEEK'):
+                    #         peek_data = remote.recv(1, socket.MSG_PEEK)
+                    #         if not peek_data:
+                    #             logging.debug('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
+                    #             remote.close()
+                    #             continue
                     break
                 else:
                     logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e or 'Failed')
