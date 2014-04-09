@@ -1213,7 +1213,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key')
+        #cache_key = kwargs.get('cache_key')
+        cache_key = ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
