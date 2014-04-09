@@ -37,7 +37,7 @@
 #      Toshio Xiang      <snachx@gmail.com>
 #      Bo Tian           <dxmtb@163.com>
 
-__version__ = '3.1.7'
+__version__ = '3.1.8'
 
 import sys
 import os
@@ -848,6 +848,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if hasattr(remote, 'fileno'):
             # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
             remote.settimeout(None)
+        del kwargs
         try:
             tick = 1
             bufsize = self.bufsize
