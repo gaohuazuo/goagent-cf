@@ -829,7 +829,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if hasattr(socket, 'MSG_PEEK'):
                             peek_data = remote.recv(1, socket.MSG_PEEK)
                             if not peek_data:
-                                logging.info('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
+                                logging.debug('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
                                 remote.close()
                                 continue
                     break
@@ -871,6 +871,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
+            if e.args[0] in (errno.EBADF,):
+                return
         finally:
             if local:
                 local.close()
