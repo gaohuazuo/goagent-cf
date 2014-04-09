@@ -1210,7 +1210,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         #cache_key = kwargs.get('cache_key')
         cache_key = ''
-        client_hello = kwargs.pop('client_hello', None)
+        client_hello = kwargs.get('client_hello', None)
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
