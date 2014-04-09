@@ -689,6 +689,19 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("%s %d %s\r\n" %
                              (self.protocol_version, code, message))
 
+    def send_header(self, keyword, value):
+        """Send a MIME header."""
+        base_send_header = BaseHTTPServer.BaseHTTPRequestHandler.send_header
+        keyword = keyword.title()
+        if keyword == 'Set-Cookie':
+            for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
+                base_send_header(self, keyword, cookie)
+        elif keyword == 'Content-Disposition' and '"' not in value:
+            value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
+            base_send_header(self, keyword, value)
+        else:
+            base_send_header(self, keyword, value)
+
     def setup(self):
         if isinstance(self.__class__.first_run, collections.Callable):
             try:
@@ -890,15 +903,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response_headers = {k.title(): v for k, v in response.getheaders()}
         self.send_response(response.status)
         for key, value in response.getheaders():
-            key = key.title()
-            if key == 'Set-Cookie':
-                for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
-                    self.send_header(key, cookie)
-            elif key == 'Content-Disposition' and '"' not in value:
-                disposition = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
-                self.send_header(key, disposition)
-            else:
-                self.send_header(key, value)
+            self.send_header(key, value)
         self.end_headers()
         need_chunked = 'Transfer-Encoding' in response_headers
         try:
@@ -953,15 +958,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return RangeFetch(self, response, fetchservers, **kwargs).fetch()
                     self.send_response(response.status)
                     for key, value in response.getheaders():
-                        key = key.title()
-                        if key == 'Set-Cookie':
-                            for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
-                                self.send_header(key, cookie)
-                        elif key == 'Content-Disposition' and '"' not in value:
-                            disposition = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
-                            self.send_header(key, disposition)
-                        else:
-                            self.send_header(key, value)
+                        self.send_header(key, value)
                     self.end_headers()
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
