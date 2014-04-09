@@ -661,8 +661,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
-    normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
-    normattachment = functools.partial(re.compile(r'filename=([^"\']+)').sub, 'filename="\\1"')
     bufsize = 256 * 1024
     max_timeout = 16
     connect_timeout = 8
@@ -890,12 +888,17 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
         logging.info('%s "DIRECT %s %s %s" %s %s', self.address_string(), self.command, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
         response_headers = {k.title(): v for k, v in response.getheaders()}
-        if 'Set-Cookie' in response_headers:
-            response_headers['Set-Cookie'] = self.normcookie(response_headers['Set-Cookie'])
         self.send_response(response.status)
         for key, value in response.getheaders():
             key = key.title()
-            self.send_header(key, value)
+            if key == 'Set-Cookie':
+                for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
+                    self.send_header(key, cookie)
+            elif key == 'Content-Disposition' and '"' not in value:
+                disposition = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
+                self.send_header(key, disposition)
+            else:
+                self.send_header(key, value)
         self.end_headers()
         need_chunked = 'Transfer-Encoding' in response_headers
         try:
@@ -948,14 +951,17 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
                         return RangeFetch(self, response, fetchservers, **kwargs).fetch()
-                    if response.getheader('Set-Cookie'):
-                        response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
-                    if response.getheader('Content-Disposition') and '"' not in response.getheader('Content-Disposition'):
-                        response.msg['Content-Disposition'] = self.normattachment(response.getheader('Content-Disposition'))
                     self.send_response(response.status)
                     for key, value in response.getheaders():
                         key = key.title()
-                        self.send_header(key, value)
+                        if key == 'Set-Cookie':
+                            for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
+                                self.send_header(key, cookie)
+                        elif key == 'Content-Disposition' and '"' not in value:
+                            disposition = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
+                            self.send_header(key, disposition)
+                        else:
+                            self.send_header(key, value)
                     self.end_headers()
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
