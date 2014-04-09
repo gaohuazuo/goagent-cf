@@ -604,6 +604,8 @@ def spawn_later(seconds, target, *args, **kwargs):
 
 
 def is_clienthello(data):
+    if len(data) < 20:
+        return False
     if data.startswith('\x16\x03'):
         # TLSv12/TLSv11/TLSv1/SSLv3
         length, = struct.unpack('>h', data[3:5])
@@ -611,6 +613,8 @@ def is_clienthello(data):
     elif data[0] == '\x80' and data[2:4] == '\x01\x03':
         # SSLv23
         return len(data) == 2 + ord(data[1])
+    else:
+        return False
 
 
 class BaseProxyHandlerFilter(object):
@@ -823,31 +827,19 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.close_connection = 1
         data = local.recv(1024)
         data_is_clienthello = is_clienthello(data)
+        if data_is_clienthello:
+            kwargs['client_hello'] = data
         for i in xrange(5):
             try:
                 if do_ssl_handshake:
                     remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
                 else:
                     remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-                if remote and not isinstance(remote, Exception):
+                if not data_is_clienthello and remote and not isinstance(remote, Exception):
                     remote.sendall(data)
-                    # if data_is_clienthello:
-                    #     rs, _, es = select.select([remote], [], [remote], timeout)
-                    #     if not rs or es:
-                    #         logging.warning('create_connection(%r, %r) return bad fdset %r %r after ClientHello', hostname, port, rs, es)
-                    #         remote.close()
-                    #         continue
-                    #     if hasattr(socket, 'MSG_PEEK'):
-                    #         peek_data = remote.recv(1, socket.MSG_PEEK)
-                    #         if not peek_data:
-                    #             logging.debug('create_connection(%r, %r) return %r after ClientHello, continue', hostname, port, peek_data)
-                    #             remote.close()
-                    #             continue
-                    break
-                else:
-                    logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e or 'Failed')
+                break
             except Exception as e:
-                logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
+                logging.exception('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
                 if hasattr(remote, 'close'):
                     remote.close()
                 if i == max_retry - 1:
@@ -1218,6 +1210,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         #cache_key = kwargs.get('cache_key')
         cache_key = ''
+        client_hello = kwargs.pop('client_hello', None)
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1237,6 +1230,14 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 sock.connect(ipaddr)
                 # record TCP connection time
                 self.tcp_connection_time[ipaddr] = time.time() - start_time
+                # send client hello and peek server hello
+                if client_hello:
+                    sock.sendall(client_hello)
+                    if hasattr(socket, 'MSG_PEEK'):
+                        peek_data = sock.recv(1, socket.MSG_PEEK)
+                        if not peek_data:
+                            logging.debug('create_tcp_connection %r with client_hello return NULL byte, continue %r', ipaddr, time.time()-start_time)
+                            raise socket.error('timed out')
                 # put tcp socket object to output queobj
                 queobj.put(sock)
             except (socket.error, OSError) as e:
@@ -1253,7 +1254,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 tcp_time_threshold = min(1, 1.3 * first_tcp_time)
                 if sock and not isinstance(sock, Exception):
                     ipaddr = sock.getpeername()
-                    if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
+                    if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold and not client_hello:
                         self.tcp_connection_cache[cache_key].put((time.time(), sock))
                     else:
                         sock.close()
@@ -1279,8 +1280,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, (socket.error, OSError)):
-                    ipaddr = result.getpeername()
-                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, self.tcp_connection_time[ipaddr]))
+                    # first_tcp_time = self.tcp_connection_time[result.getpeername()]
+                    first_tcp_time = 0
+                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, first_tcp_time))
                     return result
                 else:
                     if i == 0:
