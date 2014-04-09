@@ -604,8 +604,8 @@ def spawn_later(seconds, target, *args, **kwargs):
 
 
 def is_clienthello(data):
-    if data.startswith(('\x16\x03\x01', '\x16\x03\x00')):
-        # TLSv1/SSLv3
+    if data.startswith('\x16\x03'):
+        # TLSv12/TLSv11/TLSv1/SSLv3
         length, = struct.unpack('>h', data[3:5])
         return len(data) == 5 + length
     elif data[0] == '\x80' and data[2:4] == '\x01\x03':
