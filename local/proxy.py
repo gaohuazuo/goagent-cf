@@ -658,6 +658,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """SimpleProxyHandler for GoAgent 3.x"""
 
     protocol_version = 'HTTP/1.1'
+    ssl_version = ssl.PROTOCOL_SSLv23
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
@@ -731,7 +732,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-        ssl_sock = ssl.wrap_socket(sock)
+        ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version)
         return ssl_sock
 
     def create_http_request(self, method, url, headers, body, timeout, **kwargs):
@@ -780,7 +781,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         try:
-            ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
+            ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
         except Exception as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                 logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
@@ -1306,9 +1307,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
                 if not validate:
-                    ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
+                    ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, do_handshake_on_connect=False)
                 else:
-                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cacert.pem'), do_handshake_on_connect=False)
+                    ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cacert.pem'), do_handshake_on_connect=False)
                 ssl_sock.settimeout(timeout or self.connect_timeout)
                 # start connection time record
                 start_time = time.time()
