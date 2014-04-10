@@ -1197,7 +1197,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         try:
             iplist = self.dns_cache[hostname]
         except KeyError:
-            if self.dns_servers:
+            if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
+                iplist = [hostname]
+            elif self.dns_servers:
                 iplist = dns_remote_resolve(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
