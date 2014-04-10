@@ -2592,7 +2592,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
                        'Connection': 'close'}
             content = ''
-            if urlparts.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+            if urlparts.path.lower().endswith(('.jpg', '.gif', '.png','.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
             return [handler.MOCK, 200, headers, content]
