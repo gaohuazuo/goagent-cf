@@ -100,7 +100,7 @@ function curl_header_function($ch, $header) {
             $__content__ .= $key . substr($header, $pos);
         }
     }
-    if (preg_match('@^Content-Type: ?(audio/|image/|video/|application/octet-stream)@i', $headers)) {
+    if (preg_match('@^Content-Type: ?(audio/|image/|video/|application/octet-stream)@i', $header)) {
         $__content_type__ = 'image/x-png';
     }
     if (!trim($header)) {
