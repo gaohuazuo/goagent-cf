@@ -890,7 +890,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             url = 'http://%s%s' % (self.headers['Host'], self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
-        body = self.rfile.read(int(headers.get('Content-Length', 0)))
+        body = self.body
         response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
         logging.info('%s "DIRECT %s %s %s" %s %s', self.address_string(), self.command, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
         response_headers = {k.title(): v for k, v in response.getheaders()}
