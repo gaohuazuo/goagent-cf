@@ -566,6 +566,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                             return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
+        raise socket.gaierror(11004, 'getaddrinfo %r failed' % qname)
     finally:
         for sock in socks:
             sock.close()
@@ -1267,9 +1268,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         except Queue.Empty:
             pass
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
-        max_retry = kwargs.get('max_retry', 3)
         sock = None
-        for _ in range(max_retry):
+        for _ in range(kwargs.get('max_retry', 3)):
             window = min((self.max_window+1)//2, len(addresses))
             addresses.sort(key=self.tcp_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
@@ -1283,10 +1283,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     first_tcp_time = 0
                     thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, first_tcp_time))
                     return sock
-                else:
-                    if i == 0:
-                        # only output first error
-                        logging.warning('create_connection to %s return %r, try again.', addrs, sock)
+                elif i == 0:
+                    # only output first error
+                    logging.warning('create_connection to %s return %r, try again.', addrs, sock)
         if isinstance(sock, Exception):
             raise sock
 
@@ -1419,9 +1418,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         except Queue.Empty:
             pass
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
-        max_retry = kwargs.get('max_retry', 3)
         sock = None
-        for _ in range(max_retry):
+        for _ in range(kwargs.get('max_retry', 3)):
             window = min((self.max_window+1)//2, len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
@@ -1433,10 +1431,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 if not isinstance(sock, Exception):
                     thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, sock.tcp_time, sock.ssl_time))
                     return sock
-                else:
-                    if i == 0:
-                        # only output first error
-                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, sock)
+                elif i == 0:
+                    # only output first error
+                    logging.warning('create_ssl_connection to %s return %r, try again.', addrs, sock)
         if isinstance(sock, Exception):
             raise sock
 
