@@ -1264,10 +1264,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     sock.close()
         except Queue.Empty:
             pass
-        result = None
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
-        errors = []
-        for i in range(3):
+        max_retry = kwargs.get('max_retry', 3)
+        sock = None
+        for _ in range(max_retry):
             window = min((self.max_window+1)//2, len(addresses))
             addresses.sort(key=self.tcp_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
@@ -1275,18 +1275,18 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
-                result = queobj.get()
-                if not isinstance(result, (socket.error, OSError)):
-                    # first_tcp_time = self.tcp_connection_time[result.getpeername()]
+                sock = queobj.get()
+                if not isinstance(sock, Exception):
+                    # first_tcp_time = self.tcp_connection_time[sock.getpeername()]
                     first_tcp_time = 0
                     thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, first_tcp_time))
-                    return result
+                    return sock
                 else:
                     if i == 0:
                         # only output first error
-                        logging.warning('create_connection to %s return %r, try again.', addrs, result)
-                    errors.append(result)
-        raise errors[-1]
+                        logging.warning('create_connection to %s return %r, try again.', addrs, sock)
+        if isinstance(sock, Exception):
+            raise sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         cache_key = kwargs.get('cache_key')
@@ -1416,31 +1416,29 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     sock.close()
         except Queue.Empty:
             pass
-        result = None
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
-        for i in range(3):
+        max_retry = kwargs.get('max_retry', 3)
+        sock = None
+        for _ in range(max_retry):
             window = min((self.max_window+1)//2, len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
-            errors = []
             for i in range(len(addrs)):
-                result = queobj.get()
-                if not isinstance(result, Exception):
-                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, result.tcp_time, result.ssl_time))
-                    if i > 0:
-                        logging.info('create_ssl_connection to %s return OK.', addrs)
-                    return result
+                sock = queobj.get()
+                if not isinstance(sock, Exception):
+                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, sock.tcp_time, sock.ssl_time))
+                    return sock
                 else:
                     if i == 0:
                         # only output first error
-                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
-                errors.append(result)
-        raise errors[-1]
+                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, sock)
+        if isinstance(sock, Exception):
+            raise sock
 
-    def create_http_request(self, method, url, headers, body, timeout, max_retry=3, bufsize=8192, crlf=None, validate=None, cache_key=None):
+    def create_http_request(self, method, url, headers, body, timeout, max_retry=2, bufsize=8192, crlf=None, validate=None, cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1456,19 +1454,15 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         if body and 'Content-Length' not in headers:
             headers['Content-Length'] = str(len(body))
         sock = None
-        errors = []
-        for _ in range(max_retry):
+        for i in range(max_retry):
             try:
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
                 sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key)
-                if sock and not isinstance(sock, Exception):
-                    break
+                break
             except Exception as e:
                 logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
-                errors.append(e)
-                continue
-        if not sock and errors:
-            raise errors[-1]
+                if i == max_retry - 1:
+                    raise
         request_data = ''
         crlf_counter = 0
         if scheme != 'https' and crlf:
