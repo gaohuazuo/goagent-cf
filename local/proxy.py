@@ -880,7 +880,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def DIRECT(self, kwargs):
         method = self.command
-        if self.path.lower().startswith(('http://', 'https://', 'ftp://')):
+        if 'url' in kwargs:
+            url = kwargs.pop('url')
+        elif self.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = self.path
         else:
             url = 'http://%s%s' % (self.headers['Host'], self.path)
