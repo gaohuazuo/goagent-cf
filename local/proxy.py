@@ -1644,10 +1644,10 @@ class Common(object):
                 iplist = dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)
                 queue.put((host, dnsservers, iplist or []))
             except (socket.error, OSError) as e:
-                logging.error('resolve remote host=%r failed: %s', host, e)
+                logging.warning('resolve remote host=%r failed: %s', host, e)
                 queue.put((host, dnsservers, []))
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
-        google_blacklist = ['216.239.32.20'] + list(common.DNS_BLACKLIST)
+        google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
                 continue
