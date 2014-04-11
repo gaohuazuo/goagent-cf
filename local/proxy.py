@@ -934,14 +934,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
                 # appid over qouta, switch to next appid
                 if response.app_status >= 500:
-                    message = {503: 'Current APPID Over Quota'}.get(response.status) or 'URLFETCH retrun %s' % response.status
-                    if i == max_retry - 1:
-                        content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, message)
-                        return self.MOCK(response.status, {'Content-Type': 'text/html'}, content)
-                    else:
-                        fetchserver = random.choice(fetchservers)
-                        logging.info('%s, trying another fetchserver=%r', message, fetchserver)
+                    if i < max_retry - 1:
                         response.close()
+                        fetchserver = random.choice(fetchservers)
+                        logging.info('URLFETCH return %d, trying another fetchserver=%r', response.app_status, fetchserver)
                         continue
                 # first response, has no retry.
                 if not headers_sent and not raw_response:
