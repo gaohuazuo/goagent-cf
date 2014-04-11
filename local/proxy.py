@@ -2574,6 +2574,15 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                     headers = {'Content-Type': 'application/octet-stream', 'Connection': 'close'}
                     if path.endswith('pac'):
                         headers['Content-Type'] = 'text/plain'
+                    if 'gzip' in handler.headers.get('Accept-Encoding'):
+                        headers['Content-Encoding'] = 'gzip'
+                        compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+                        dataio = io.BytesIO()
+                        dataio.write('\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff')
+                        dataio.write(compressobj.compress(content))
+                        dataio.write(compressobj.flush())
+                        dataio.write(struct.pack('<LL', zlib.crc32(content) & 0xFFFFFFFFL, len(content) & 0xFFFFFFFFL))
+                        content = dataio.getvalue()
                     return [handler.MOCK, 200, headers, content]
 
 
