@@ -546,7 +546,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
         socks.append(sock_v6)
     timeout_at = time.time() + timeout
     try:
-        for _ in xrange(5):
+        for _ in xrange(4):
             try:
                 for dnsserver in dns_v4_servers:
                     sock_v4.sendto(query_data, (dnsserver, 53))
@@ -566,7 +566,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                             return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
-        raise socket.gaierror(11004, 'getaddrinfo %r failed' % qname)
+        raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
     finally:
         for sock in socks:
             sock.close()
