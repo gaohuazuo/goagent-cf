@@ -1503,10 +1503,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
             return None
         response = httplib.HTTPResponse(sock, buffering=True)
-        try:
-            response.begin()
-        except httplib.BadStatusLine:
-            response = None
+        response.begin()
         return response
 
 
