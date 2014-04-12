@@ -2228,7 +2228,6 @@ class GreenForwardMixin:
             # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
             remote.settimeout(None)
         del kwargs
-        logging.info('%s "GREEN FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
         thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
         GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
 
