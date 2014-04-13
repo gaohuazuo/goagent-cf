@@ -1467,6 +1467,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 break
             except Exception as e:
                 logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
+                if sock:
+                    sock.close()
                 if i == max_retry - 1:
                     raise
         request_data = ''
@@ -1510,6 +1512,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 crlf_counter -= 1
         except Exception as e:
             logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
+            if sock:
+                sock.close()
             return None
         response = httplib.HTTPResponse(sock, buffering=True)
         response.begin()
