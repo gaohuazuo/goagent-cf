@@ -822,6 +822,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = 1
         data = local.recv(1024)
+        if not data:
+            local.close()
+            return
         data_is_clienthello = is_clienthello(data)
         if data_is_clienthello:
             kwargs['client_hello'] = data
@@ -2204,6 +2207,9 @@ class GreenForwardMixin:
         self.end_headers()
         self.close_connection = 1
         data = local.recv(1024)
+        if not data:
+            local.close()
+            return
         data_is_clienthello = is_clienthello(data)
         if data_is_clienthello:
             kwargs['client_hello'] = data
