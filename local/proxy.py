@@ -917,15 +917,16 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             url = 'http://%s%s' % (self.headers['Host'], self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.body
-        response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
-        logging.info('%s "DIRECT %s %s %s" %s %s', self.address_string(), self.command, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
-        response_headers = {k.title(): v for k, v in response.getheaders()}
-        self.send_response(response.status)
-        for key, value in response.getheaders():
-            self.send_header(key, value)
-        self.end_headers()
-        need_chunked = 'Transfer-Encoding' in response_headers
+        response = None
         try:
+            response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
+            logging.info('%s "DIRECT %s %s %s" %s %s', self.address_string(), self.command, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
+            response_headers = {k.title(): v for k, v in response.getheaders()}
+            self.send_response(response.status)
+            for key, value in response.getheaders():
+                self.send_header(key, value)
+            self.end_headers()
+            need_chunked = 'Transfer-Encoding' in response_headers
             while True:
                 data = response.read(8192)
                 if not data:
@@ -939,7 +940,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write('\r\n')
                 del data
         finally:
-            response.close()
+            if response:
+                response.close()
 
     def URLFETCH(self, fetchservers, max_retry=2, raw_response=False, kwargs={}):
         """urlfetch from fetchserver"""
