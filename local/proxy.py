@@ -2546,22 +2546,14 @@ class PacUtil(object):
                 black_conditions += jsCondition
             else:
                 white_conditions += jsCondition
-        black_lines = ' ||\r\n'.join('%s%s' % (' '*(4+indent), x.replace('**', '*')) for x in black_conditions).strip()
-        # white_lines = ' ||\r\n'.join('%s%s' % (' '*(4+indent), x.replace('**', '*')) for x in white_conditions).strip()
-        white_lines = 'false'
         template = '''\
                     function %s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
-                        // if (%s) {
-                        //    return "%s";
-                        // }
-                        if (%s) {
-                            return "PROXY %s";
-                        }
+                    %s
                         return "%s";
                     }'''
         template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
-        return template % (func_name, white_lines, default, black_lines, proxy, default)
+        return template % (func_name, '\r\n'.join('%sif (%s) return "%s";' % (' '*indent, line, proxy) for line in black_conditions) , default)
 
 
 class PacFileFilter(BaseProxyHandlerFilter):
