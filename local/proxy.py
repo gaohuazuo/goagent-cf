@@ -878,10 +878,11 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] in (errno.EBADF,):
                 return
         finally:
-            if local:
-                local.close()
-            if remote:
-                remote.close()
+            for sock in (remote, local):
+                try:
+                    sock.close()
+                except:
+                    pass
 
     def DIRECT(self, kwargs):
         method = self.command
@@ -2192,10 +2193,11 @@ class GreenForwardMixin:
             if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
                 raise
         finally:
-            if dest:
-                dest.close()
-            if source:
-                source.close()
+            for sock in (dest, source):
+                try:
+                    sock.close()
+                except:
+                    pass
 
     def FORWARD(self, hostname, port, timeout, kwargs={}):
         """forward socket"""
