@@ -2433,24 +2433,28 @@ class PacUtil(object):
                 else:
                     direct_domain_set.add(domain)
         proxy_domain_set = set(x.lstrip('.') for x in proxy_domain_set)
-        jsLines = ',\n'.join('%s"%s": 1' % (' '*indent, x) for x in proxy_domain_set)
+        autoproxy_host = ',\r\n'.join('%s"%s": 1' % (' '*indent, x) for x in proxy_domain_set)
         template = '''\
-                    var domainsFor%s = {
-                    %s
+                    var autoproxy_host = {
+                    %(autoproxy_host)s
                     };
-                    function %s(url, host) {
+                    function %(func_name)s(url, host) {
                         var lastPos;
                         do {
-                            if (domainsFor%s.hasOwnProperty(host)) {
-                                return 'PROXY %s';
+                            if (autoproxy_host.hasOwnProperty(host)) {
+                                return 'PROXY %(proxy)s';
                             }
                             lastPos = host.indexOf('.') + 1;
                             host = host.slice(lastPos);
                         } while (lastPos >= 1);
-                        return '%s';
+                        return '%(default)s';
                     }'''
         template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
-        return template % (func_name, jsLines, func_name, func_name, proxy, default)
+        template_args = {'autoproxy_host': autoproxy_host,
+                         'func_name': func_name,
+                         'proxy': proxy,
+                         'default': default}
+        return template % template_args
 
     @staticmethod
     def urlfilter2pac(content, func_name='FindProxyForURLByUrlfilter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
@@ -2565,7 +2569,7 @@ class PacUtil(object):
                     function %(func_name)s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
                         if (blackhole_host.hasOwnProperty(host)) {
-                            return '%(proxy)s';
+                            return 'PROXY %(proxy)s';
                         }
                         return '%(default)s';
                     }''',
@@ -2579,11 +2583,11 @@ class PacUtil(object):
                     function %s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
                         if (blackhole_host.hasOwnProperty(host)) {
-                            return '%(proxy)s';
+                            return 'PROXY %(proxy)s';
                         }
                         for (i = 0; i < blackhole_url_indexOf.length; i++) {
                             if (url.indexOf(blackhole_url_indexOf[i]) >= 0) {
-                                return '%(proxy)s';
+                                return 'PROXY %(proxy)s';
                             }
                         }
                         return '%(default)s';
@@ -2601,16 +2605,16 @@ class PacUtil(object):
                     function %(func_name)s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
                         if (blackhole_host.hasOwnProperty(host)) {
-                            return '%(proxy)s';
+                            return 'PROXY %(proxy)s';
                         }
                         for (i = 0; i < blackhole_url_indexOf.length; i++) {
                             if (url.indexOf(blackhole_url_indexOf[i]) >= 0) {
-                                return '%(proxy)s';
+                                return 'PROXY %(proxy)s';
                             }
                         }
                         for (i = 0; i < blackhole_shExpMatch.length; i++) {
                             if (shExpMatch(url, blackhole_shExpMatch[i])) {
-                                return '%(proxy)s';
+                                return 'PROXY %(proxy)s';
                             }
                         }
                         return '%(default)s';
