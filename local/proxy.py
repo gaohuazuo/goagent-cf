@@ -936,9 +936,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write('\r\n')
                 del data
         except (ssl.SSLError, socket.timeout, socket.error):
-            if response.fp and response.fp._sock:
-                response.fp._sock.close()
             if response:
+                if response.fp and response.fp._sock:
+                    response.fp._sock.close()
                 response.close()
         finally:
             if response:
