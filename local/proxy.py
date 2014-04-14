@@ -778,28 +778,40 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.port = 443 if self.scheme == 'https' else 80
 
     def forward_socket(self, local, remote, timeout):
-        tick = 1
-        bufsize = self.bufsize
-        timecount = timeout
-        while 1:
-            timecount -= tick
-            if timecount <= 0:
-                break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
+        try:
+            tick = 1
+            bufsize = self.bufsize
+            timecount = timeout
+            while 1:
+                timecount -= tick
+                if timecount <= 0:
+                    break
+                (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+                if errors:
+                    break
                 for sock in ins:
                     data = sock.recv(bufsize)
-                    if data:
-                        if sock is remote:
-                            local.sendall(data)
-                            timecount = timeout
-                        else:
-                            remote.sendall(data)
-                            timecount = timeout
+                    if not data:
+                        break
+                    if sock is remote:
+                        local.sendall(data)
+                        timecount = timeout
                     else:
-                        return
+                        remote.sendall(data)
+                        timecount = timeout
+        except socket.timeout:
+            pass
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+            if e.args[0] in (errno.EBADF,):
+                return
+        finally:
+            for sock in (remote, local):
+                try:
+                    sock.close()
+                except Exception:
+                    pass
 
     def MOCK(self, status, headers, content):
         """mock response"""
@@ -889,19 +901,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
             remote.settimeout(None)
         del kwargs
-        try:
-            self.forward_socket(local, remote, self.max_timeout)
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
-                raise
-            if e.args[0] in (errno.EBADF,):
-                return
-        finally:
-            for sock in (remote, local):
-                try:
-                    sock.close()
-                except Exception:
-                    pass
+        self.forward_socket(local, remote, self.max_timeout)
 
     def DIRECT(self, kwargs):
         method = self.command
@@ -935,6 +935,11 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if need_chunked:
                     self.wfile.write('\r\n')
                 del data
+        except (ssl.SSLError, socket.timeout, socket.error):
+            if response.fp and response.fp._sock:
+                response.fp._sock.close()
+            if response:
+                response.close()
         finally:
             if response:
                 response.close()
@@ -1243,7 +1248,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         peek_data = sock.recv(1, socket.MSG_PEEK)
                         if not peek_data:
                             logging.debug('create_tcp_connection %r with client_hello return NULL byte, continue %r', ipaddr, time.time()-start_time)
-                            raise socket.error('timed out')
+                            raise socket.timeout('timed out')
                 # put tcp socket object to output queobj
                 queobj.put(sock)
             except (socket.error, OSError) as e:
@@ -2188,13 +2193,27 @@ class GreenForwardMixin:
 
     @staticmethod
     def io_copy(dest, source, timeout, bufsize):
-        dest.settimeout(timeout)
-        source.settimeout(timeout)
-        while 1:
-            data = source.recv(bufsize)
-            if not data:
-                break
-            dest.sendall(data)
+        try:
+            dest.settimeout(timeout)
+            source.settimeout(timeout)
+            while 1:
+                data = source.recv(bufsize)
+                if not data:
+                    break
+                dest.sendall(data)
+        except socket.timeout:
+            pass
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+            if e.args[0] in (errno.EBADF,):
+                return
+        finally:
+            for sock in (dest, source):
+                try:
+                    sock.close()
+                except Exception:
+                    pass
 
     def forward_socket(self, local, remote, timeout):
         """forward socket"""
