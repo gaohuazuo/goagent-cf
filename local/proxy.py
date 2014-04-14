@@ -1512,6 +1512,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 sock.sendall(data)
         else:
             raise TypeError('create_http_request(body) must be a string or buffer, not %r' % type(body))
+        response = None
         try:
             while crlf_counter:
                 response = httplib.HTTPResponse(sock, buffering=False)
@@ -1521,6 +1522,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 crlf_counter -= 1
         except Exception as e:
             logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
+            if response:
+                if response.fp and response.fp._sock:
+                    response.fp._sock.close()
+                response.close()
             if sock:
                 sock.close()
             return None
