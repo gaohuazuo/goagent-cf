@@ -1201,6 +1201,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     dns_servers = []
     dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
+    tcp_connection_time_with_clienthello = collections.defaultdict(float)
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
@@ -1249,6 +1250,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         if not peek_data:
                             logging.debug('create_tcp_connection %r with client_hello return NULL byte, continue %r', ipaddr, time.time()-start_time)
                             raise socket.timeout('timed out')
+                        # record TCP connection time with client hello
+                        self.tcp_connection_time_with_clienthello[ipaddr] = time.time() - start_time
                 # put tcp socket object to output queobj
                 queobj.put(sock)
             except (socket.error, OSError) as e:
@@ -1282,7 +1285,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         sock = None
         for _ in range(kwargs.get('max_retry', 3)):
             window = min((self.max_window+1)//2, len(addresses))
-            addresses.sort(key=self.tcp_connection_time.__getitem__)
+            if client_hello:
+                addresses.sort(key=self.tcp_connection_time_with_clienthello.__getitem__)
+            else:
+                addresses.sort(key=self.tcp_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
@@ -1290,7 +1296,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             for i in range(len(addrs)):
                 sock = queobj.get()
                 if not isinstance(sock, Exception):
-                    first_tcp_time = self.tcp_connection_time[sock.getpeername()]
+                    first_tcp_time = self.tcp_connection_time[sock.getpeername()] if not cache_key else 0
                     thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, first_tcp_time))
                     return sock
                 elif i == 0:
