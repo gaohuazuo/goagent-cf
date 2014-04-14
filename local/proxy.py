@@ -647,14 +647,13 @@ class AuthFilter(BaseProxyHandlerFilter):
         return False
 
     def filter(self, handler):
-        if handler.has_auth_filter:
-            auth_header = handler.headers.get('Proxy-Authorization')
-            if not auth_header or not self.check_auth_header(auth_header):
-                headers = {'Access-Control-Allow-Origin': '*',
-                           'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
-                           'Content-Length': '0',
-                           'Connection': 'keep-alive'}
-                return [handler.MOCK, 407, headers, '']
+        auth_header = handler.headers.get('Proxy-Authorization')
+        if not auth_header or not self.check_auth_header(auth_header):
+            headers = {'Access-Control-Allow-Origin': '*',
+                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                       'Content-Length': '0',
+                       'Connection': 'keep-alive'}
+            return [handler.MOCK, 407, headers, '']
 
 
 class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -669,7 +668,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     connect_timeout = 8
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
-    has_auth_filter = False
+    stripssl_handler_filter = None
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -763,13 +762,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         raise NotImplementedError
 
     def parse_header(self):
-        if self.has_auth_filter:
-            auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
-            original_auth_headers = getattr(self, 'auth_headers', {})
-            if auth_headers or original_auth_headers:
-                for key, value in original_auth_headers.items():
-                    if key not in auth_headers:
-                        self.headers[key] = value
         if self.command == 'CONNECT':
             netloc = self.path
         elif self.path[0] == '/':
@@ -798,10 +790,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def STRIPSSL(self):
+    def STRIPSSL(self, stripssl_handler_filter=None):
         """strip ssl"""
-        if self.has_auth_filter:
-            self.auth_headers = {k.title(): v for k, v in self.headers.items() if k.title().endswith('-Authorization')}
         certfile = CertUtil.get_cert(self.host)
         logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
         self.send_response(200)
@@ -832,6 +822,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         self.scheme = 'https'
+        self.stripssl_handler_filter = stripssl_handler_filter
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
@@ -1021,6 +1012,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD(self):
         self.parse_header()
         self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
+        if self.stripssl_handler_filter:
+            action = self.stripssl_handler_filter.filter(self)
+            if action:
+                return action.pop(0)(*action)
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
@@ -1851,7 +1846,7 @@ class WithGAEFilter(BaseProxyHandlerFilter):
         if handler.host in common.HTTP_WITHGAE:
             logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
             if handler.command == 'CONNECT':
-                return [handler.STRIPSSL]
+                return [handler.STRIPSSL, self]
             kwargs = {}
             if common.GAE_PASSWORD:
                 kwargs['password'] = common.GAE_PASSWORD
@@ -1874,7 +1869,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, None]
 
 
 class HostsFilter(BaseProxyHandlerFilter):
@@ -1991,7 +1986,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self]
         else:
             kwargs = {}
             if common.GAE_PASSWORD:
@@ -2092,7 +2087,7 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self]
         else:
             kwargs = {}
             if common.PHP_PASSWORD:
@@ -2622,7 +2617,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         urlparts = urlparse.urlsplit(handler.path)
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self]
         elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
@@ -2753,10 +2748,8 @@ def pre_start():
     RangeFetch.maxsize = common.AUTORANGE_MAXSIZE
     RangeFetch.bufsize = common.AUTORANGE_BUFSIZE
     RangeFetch.waitsize = common.AUTORANGE_WAITSIZE
-    GAEProxyHandler.has_auth_filter = any(isinstance(x, AuthFilter) for x in GAEProxyHandler.handler_filters)
-    if common.LISTEN_USERNAME and common.LISTEN_PASSWORD and not GAEProxyHandler.has_auth_filter:
+    if common.LISTEN_USERNAME and common.LISTEN_PASSWORD:
         GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
-        GAEProxyHandler.has_auth_filter = True
 
 
 def main():
