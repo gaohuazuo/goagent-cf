@@ -2457,8 +2457,8 @@ class PacUtil(object):
     @staticmethod
     def adblock2pac(content, func_name='FindProxyForURLByAdblock', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
         """adblock list to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        white_conditions = []
-        black_conditions = []
+        white_conditions = {'host': [], 'url.indexOf': [], 'shExpMatch': []}
+        black_conditions = {'host': [], 'url.indexOf': [], 'shExpMatch': []}
         for line in content.splitlines()[1:]:
             if not line or line.startswith('!') or '##' in line or '#@#' in line:
                 continue
@@ -2495,55 +2495,76 @@ class PacUtil(object):
                 if not use_postfix:
                     use_end = True
             line = line.replace('^', '*').strip('*')
+            conditions = black_conditions if use_proxy else white_conditions
             if use_start and use_end:
-                jsCondition = ['shExpMatch(url, "*%s*")' % line]
+                conditions['shExpMatch'] += ['*%s*' % line]
             elif use_start:
                 if '*' in line:
                     if use_postfix:
-                        jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
+                        conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                     else:
-                        jsCondition = ['shExpMatch(url, "*%s*")' % line]
+                        conditions['shExpMatch'] += ['*%s*' % line]
                 else:
-                    jsCondition = ['url.indexOf("%s") >= 0' % line]
+                    conditions['url.indexOf'] += [line]
             elif use_domain and use_end:
                 if '*' in line:
-                    jsCondition = ['shExpMatch(host, "%s*")' % line]
+                    conditions['shExpMatch'] += ['%s*' % line]
                 else:
-                    jsCondition = ['host == "%s"' % line]
+                    conditions['host'] += [line]
             elif use_domain:
                 if line.split('/')[0].count('.') <= 1:
                     if use_postfix:
-                        jsCondition = ['shExpMatch(url, "*.%s*%s")' % (line, x) for x in use_postfix]
+                        conditions['shExpMatch'] += ['*.%s*%s' % (line, x) for x in use_postfix]
                     else:
-                        jsCondition = ['shExpMatch(url, "*.%s*")' % line]
+                        conditions['shExpMatch'] += ['*.%s*' % line]
                 else:
                     if '*' in line:
                         if use_postfix:
-                            jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
+                            conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                         else:
-                            jsCondition = ['shExpMatch(url, "*%s*")' % line]
+                            conditions['shExpMatch'] += ['*%s*' % line]
                     else:
                         if use_postfix:
-                            jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
+                            conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                         else:
-                            jsCondition = ['url.indexOf("http://%s") == 0' % line]
+                            conditions['url.indexOf'] += ['http://%s' % line]
             else:
                 if use_postfix:
-                    jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
+                    conditions['shExpMatch'] += ['*%s*%s' % (line, x) for x in use_postfix]
                 else:
-                    jsCondition = ['shExpMatch(url, "*%s*")' % line]
-            if use_proxy:
-                black_conditions += jsCondition
-            else:
-                white_conditions += jsCondition
+                    conditions['shExpMatch'] += ['*%s*' % line]
         template = '''\
+                    var blackhole_host = {
+                    %s
+                    };
+                    var blackhole_url_indexOf = [
+                    %s
+                    ];
+                    var blackhole_shExpMatch = [
+                    %s
+                    ];
                     function %s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
-                    %s
-                        return "%s";
+                        if (blackhole_host.hasOwnProperty(host)) {
+                            return '%s';
+                        }
+                        for (i = 0; i < blackhole_url_indexOf.length; i++) {
+                            if (url.indexOf(blackhole_url_indexOf[i]) >= 0) {
+                                return '%s';
+                            }
+                        }
+                        for (i = 0; i < blackhole_shExpMatch.length; i++) {
+                            if (shExpMatch(url, blackhole_shExpMatch[i])) {
+                                return '%s';
+                            }
+                        }
+                        return '%s';
                     }'''
         template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
-        return template % (func_name, '\r\n'.join('%sif (%s) return "%s";' % (' '*indent, line, proxy) for line in black_conditions) , default)
+        return template % (',\r\n'.join("%s'%s': 1" % (' '*indent, x) for x in black_conditions['host']),
+                           ',\r\n'.join("%s'%s'" % (' '*indent, x) for x in black_conditions['url.indexOf']),
+                           ',\r\n'.join("%s'%s'" % (' '*indent, x) for x in black_conditions['shExpMatch']),
+                           func_name, proxy, proxy, proxy, default)
 
 
 class PacFileFilter(BaseProxyHandlerFilter):
