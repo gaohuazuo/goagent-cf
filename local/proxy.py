@@ -783,7 +783,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.port = int(m.group(2))
         else:
             self.host = netloc
-            self.port = 443 if self.scheme == 'http' else 80
+            self.port = 443 if self.scheme == 'https' else 80
 
     def MOCK(self, status, headers, content):
         """mock response"""
