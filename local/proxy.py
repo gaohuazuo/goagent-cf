@@ -777,6 +777,30 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = netloc
             self.port = 443 if self.scheme == 'https' else 80
 
+    def forward_socket(self, local, remote, timeout):
+        tick = 1
+        bufsize = self.bufsize
+        timecount = timeout
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if data:
+                        if sock is remote:
+                            local.sendall(data)
+                            timecount = timeout
+                        else:
+                            remote.sendall(data)
+                            timecount = timeout
+                    else:
+                        return
+
     def MOCK(self, status, headers, content):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
@@ -866,28 +890,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.settimeout(None)
         del kwargs
         try:
-            tick = 1
-            bufsize = self.bufsize
-            timecount = timeout
-            while 1:
-                timecount -= tick
-                if timecount <= 0:
-                    break
-                (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-                if errors:
-                    break
-                if ins:
-                    for sock in ins:
-                        data = sock.recv(bufsize)
-                        if data:
-                            if sock is remote:
-                                local.sendall(data)
-                                timecount = timeout
-                            else:
-                                remote.sendall(data)
-                                timecount = timeout
-                        else:
-                            return
+            self.forward_socket(local, remote, self.max_timeout)
         except NetWorkIOError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
@@ -897,7 +900,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for sock in (remote, local):
                 try:
                     sock.close()
-                except:
+                except Exception:
                     pass
 
     def DIRECT(self, kwargs):
@@ -2185,61 +2188,17 @@ class GreenForwardMixin:
 
     @staticmethod
     def io_copy(dest, source, timeout, bufsize):
-        try:
-            dest.settimeout(timeout)
-            source.settimeout(timeout)
-            while 1:
-                data = source.recv(bufsize)
-                if not data:
-                    break
-                dest.sendall(data)
-        except NetWorkIOError as e:
-            if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
-                raise
-        finally:
-            for sock in (dest, source):
-                try:
-                    sock.close()
-                except:
-                    pass
-
-    def FORWARD(self, hostname, port, timeout, kwargs={}):
-        """forward socket"""
-        do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
-        bufsize = self.bufsize
-        local = self.connection
-        remote = None
-        self.send_response(200)
-        self.end_headers()
-        self.close_connection = 1
-        data = local.recv(1024)
-        if not data:
-            local.close()
-            return
-        data_is_clienthello = is_clienthello(data)
-        if data_is_clienthello:
-            kwargs['client_hello'] = data
-        max_retry = kwargs.get('max_retry', 3)
-        for i in xrange(max_retry):
-            try:
-                if do_ssl_handshake:
-                    remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
-                else:
-                    remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-                if not data_is_clienthello and remote and not isinstance(remote, Exception):
-                    remote.sendall(data)
+        dest.settimeout(timeout)
+        source.settimeout(timeout)
+        while 1:
+            data = source.recv(bufsize)
+            if not data:
                 break
-            except Exception as e:
-                logging.exception('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
-                if hasattr(remote, 'close'):
-                    remote.close()
-                if i == max_retry - 1:
-                    raise
-        logging.info('%s "FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
-        if hasattr(remote, 'fileno'):
-            # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
-            remote.settimeout(None)
-        del kwargs
+            dest.sendall(data)
+
+    def forward_socket(self, local, remote, timeout):
+        """forward socket"""
+        bufsize = self.bufsize
         thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
         GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
 
