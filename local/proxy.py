@@ -1269,12 +1269,15 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 if sock and not isinstance(sock, Exception):
                     ipaddr = sock.getpeername()
                     if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
-                        self.tcp_connection_cache[cache_key].put((time.time(), sock))
+                        cache_queue = self.tcp_connection_cache[cache_key]
+                        if cache_queue.qsize() < 8:
+                            try:
+                                _, old_sock = cache_queue.get_nowait()
+                                old_sock.close()
+                            except Queue.Empty:
+                                pass
+                        cache_queue.put((time.time(), sock))
                     else:
-                        try:
-                            sock.shutdown(socket.SHUT_RDWR)
-                        except NetWorkIOError:
-                            pass
                         sock.close()
         try:
             while cache_key:
@@ -1425,12 +1428,15 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 ssl_time_threshold = min(1, 1.3 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
                     if cache_key and sock.ssl_time < ssl_time_threshold:
-                        self.ssl_connection_cache[cache_key].put((time.time(), sock))
+                        cache_queue = self.ssl_connection_cache[cache_key]
+                        if cache_queue.qsize() < 8:
+                            try:
+                                _, old_sock = cache_queue.get_nowait()
+                                old_sock.close()
+                            except Queue.Empty:
+                                pass
+                        cache_queue.put((time.time(), sock))
                     else:
-                        try:
-                            sock.shutdown(socket.SHUT_RDWR)
-                        except NetWorkIOError:
-                            pass
                         sock.close()
         try:
             while cache_key:
