@@ -1271,6 +1271,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     if cache_key and self.tcp_connection_time[ipaddr] < tcp_time_threshold:
                         self.tcp_connection_cache[cache_key].put((time.time(), sock))
                     else:
+                        try:
+                            sock.shutdown(socket.SHUT_RDWR)
+                        except NetWorkIOError:
+                            pass
                         sock.close()
         try:
             while cache_key:
@@ -1423,6 +1427,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     if cache_key and sock.ssl_time < ssl_time_threshold:
                         self.ssl_connection_cache[cache_key].put((time.time(), sock))
                     else:
+                        try:
+                            sock.shutdown(socket.SHUT_RDWR)
+                        except NetWorkIOError:
+                            pass
                         sock.close()
         try:
             while cache_key:
