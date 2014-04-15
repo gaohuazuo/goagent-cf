@@ -1930,16 +1930,16 @@ class HostsFilter(BaseProxyHandlerFilter):
         hostport = handler.path if handler.command == 'CONNECT' else '%s:%d' % (host, port)
         hostname = ''
         if handler.command != 'CONNECT' and any(x(handler.path) for x in common.URLRE_MAP):
-            hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path))
+            hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path)) or host
         if hostport in common.HOSTPORT_MAP:
-            hostname = common.HOSTPORT_MAP[hostport]
+            hostname = common.HOSTPORT_MAP[hostport] or host
         elif hostport.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
-            hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if hostport.endswith(x))
+            hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if hostport.endswith(x)) or host
             common.HOSTPORT_MAP[hostport] = hostname
         if host in common.HOST_MAP:
-            hostname = common.HOST_MAP[host]
+            hostname = common.HOST_MAP[host] or host
         elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
-            hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
+            hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x)) or host
             common.HOST_MAP[host] = hostname
         if not hostname:
             return None
