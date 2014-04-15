@@ -37,7 +37,7 @@
 #      Toshio Xiang      <snachx@gmail.com>
 #      Bo Tian           <dxmtb@163.com>
 
-__version__ = '3.1.9'
+__version__ = '3.1.10'
 
 import sys
 import os
