@@ -1607,7 +1607,6 @@ class Common(object):
         self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
 
         self.URLRE_MAP = collections.OrderedDict((re.compile(k).match, v) for k, v in self.CONFIG.items(hosts_section) if '\\' in k)
-        self.URLRE_HAS_LOCALFILE = any(x.startswith('file://') for x in self.URLRE_MAP.values())
 
         self.HTTP_WITHGAE = set(self.CONFIG.get(http_section, 'withgae').split('|'))
         self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
@@ -1928,47 +1927,35 @@ class HostsFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         host, port = handler.host, handler.port
+        hostport = handler.path if handler.command == 'CONNECT' else '%s:%d' % (host, port)
+        hostname = ''
+        if handler.command != 'CONNECT' and any(x(handler.path) for x in common.URLRE_MAP):
+            hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path))
+        if hostport in common.HOSTPORT_MAP:
+            hostname = common.HOSTPORT_MAP[hostport]
+        elif hostport.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
+            hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if hostport.endswith(x))
+            common.HOSTPORT_MAP[hostport] = hostname
+        if host in common.HOST_MAP:
+            hostname = common.HOST_MAP[host]
+        elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
+            hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
+            common.HOST_MAP[host] = hostname
+        if not hostname:
+            return None
+        elif hostname in common.IPLIST_MAP:
+            handler.dns_cache[host] = common.IPLIST_MAP[hostname]
+        elif hostname.startswith('file://'):
+            filename = hostname.lstrip('file://')
+            if os.name == 'nt':
+                filename = filename.lstrip('/')
+            return self.filter_localfile(handler, filename)
+        cache_key = '%s:%s' % (hostname, port)
         if handler.command == 'CONNECT':
-            if handler.path in common.HOSTPORT_MAP or handler.path.endswith(common.HOSTPORT_POSTFIX_ENDSWITH) or host in common.HOST_MAP or host.endswith(common.HOST_POSTFIX_ENDSWITH):
-                if handler.path in common.HOSTPORT_MAP:
-                    hostname = common.HOSTPORT_MAP[handler.path]
-                elif handler.path.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
-                    hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if handler.path.endswith(x))
-                    common.HOSTPORT_MAP[handler.path] = hostname
-                elif host in common.HOST_MAP:
-                    hostname = common.HOST_MAP[host]
-                elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
-                    hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
-                    common.HOST_MAP[host] = hostname
-                else:
-                    hostname = host
-                hostname = hostname or host
-                if hostname in common.IPLIST_MAP:
-                    handler.dns_cache[host] = common.IPLIST_MAP[hostname]
-                cache_key = '%s:%s' % (hostname, port)
-                return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
+            return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
         else:
-            if any(x(handler.path) for x in common.URLRE_MAP) or host in common.HOST_MAP or host.endswith(common.HOST_POSTFIX_ENDSWITH):
-                if any(x(handler.path) for x in common.URLRE_MAP):
-                    hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path))
-                elif host in common.HOST_MAP:
-                    hostname = common.HOST_MAP[host]
-                elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
-                    hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
-                    common.HOST_MAP[host] = hostname
-                else:
-                    hostname = host
-                if common.URLRE_HAS_LOCALFILE and hostname.startswith('file://'):
-                    filename = hostname.lstrip('file://')
-                    if os.name == 'nt':
-                        filename = filename.lstrip('/')
-                    return self.filter_localfile(handler, filename)
-                else:
-                    if hostname in common.IPLIST_MAP:
-                        handler.dns_cache[host] = common.IPLIST_MAP[hostname]
-                    cache_key = '%s:%s' % (hostname, port)
-                    crlf = host.endswith(common.HTTP_CRLFSITES)
-                    return [handler.DIRECT, {'cache_key': hostname, 'crlf': crlf}]
+            crlf = host.endswith(common.HTTP_CRLFSITES)
+            return [handler.DIRECT, {'cache_key': cache_key, 'crlf': crlf}]
 
 
 class DirectRegionFilter(BaseProxyHandlerFilter):
