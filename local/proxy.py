@@ -647,8 +647,10 @@ class AuthFilter(BaseProxyHandlerFilter):
         return False
 
     def filter(self, handler):
-        auth_header = handler.headers.get('Proxy-Authorization')
-        if not auth_header or not self.check_auth_header(auth_header):
+        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
+        if auth_header and self.check_auth_header(auth_header):
+            handler.auth_header = auth_header
+        else:
             headers = {'Access-Control-Allow-Origin': '*',
                        'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
                        'Content-Length': '0',
@@ -2021,7 +2023,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL, self]
+            return [handler.STRIPSSL, None]
         else:
             kwargs = {}
             if common.GAE_PASSWORD:
