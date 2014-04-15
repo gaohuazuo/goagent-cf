@@ -2001,8 +2001,9 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
 class AutoRangeFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
-        need_autorange = any(x(handler.host) for x in common.AUTORANGE_HOSTS_MATCH) or handler.path.endswith(common.AUTORANGE_ENDSWITH)
-        if handler.path.endswith(common.AUTORANGE_NOENDSWITH) or 'range=' in urlparse.urlsplit(handler.path).query or handler.command == 'HEAD':
+        path = urlparse.urlsplit(handler.path).path
+        need_autorange = any(x(handler.host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)
+        if path.endswith(common.AUTORANGE_NOENDSWITH) or 'range=' in urlparse.urlsplit(path).query or handler.command == 'HEAD':
             need_autorange = False
         if handler.command != 'HEAD' and handler.headers.get('Range'):
             m = re.search(r'bytes=(\d+)-', handler.headers['Range'])
