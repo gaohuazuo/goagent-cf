@@ -690,8 +690,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 message = ''
         if self.request_version != 'HTTP/0.9':
-            self.wfile.write("%s %d %s\r\n" %
-                             (self.protocol_version, code, message))
+            self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
 
     def send_header(self, keyword, value):
         """Send a MIME header."""
@@ -1599,16 +1598,16 @@ class Common(object):
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
             self.CONFIG.set(hosts_section, '.' + os.environ['USERDNSDOMAIN'], '')
 
-        self.HOSTS_MAP = collections.OrderedDict((k, v or k) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
-        self.HOSTS_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and k.startswith('.'))
-        self.HOSTS_POSTFIX_ENDSWITH = tuple(self.HOSTS_POSTFIX_MAP)
+        self.HOST_MAP = collections.OrderedDict((k, v or k) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
+        self.HOST_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and k.startswith('.'))
+        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
 
-        self.CONNECT_HOSTS_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and not k.startswith('.'))
-        self.CONNECT_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and k.startswith('.'))
-        self.CONNECT_POSTFIX_ENDSWITH = tuple(self.CONNECT_POSTFIX_MAP)
+        self.HOSTPORT_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and not k.startswith('.'))
+        self.HOSTPORT_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and k.startswith('.'))
+        self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
 
-        self.METHOD_REMATCH_MAP = collections.OrderedDict((re.compile(k).match, v) for k, v in self.CONFIG.items(hosts_section) if '\\' in k)
-        self.METHOD_REMATCH_HAS_LOCALFILE = any(x.startswith('file://') for x in self.METHOD_REMATCH_MAP.values())
+        self.URLRE_MAP = collections.OrderedDict((re.compile(k).match, v) for k, v in self.CONFIG.items(hosts_section) if '\\' in k)
+        self.URLRE_HAS_LOCALFILE = any(x.startswith('file://') for x in self.URLRE_MAP.values())
 
         self.HTTP_WITHGAE = set(self.CONFIG.get(http_section, 'withgae').split('|'))
         self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
@@ -1617,7 +1616,7 @@ class Common(object):
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
-        self.IPLIST_MAP.update((k, [k]) for k, v in self.HOSTS_MAP.items() if k == v)
+        self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1930,17 +1929,17 @@ class HostsFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         host, port = handler.host, handler.port
         if handler.command == 'CONNECT':
-            if handler.path in common.CONNECT_HOSTS_MAP or handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                if handler.path in common.CONNECT_HOSTS_MAP:
-                    hostname = common.CONNECT_HOSTS_MAP[handler.path]
-                elif handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH):
-                    hostname = next(common.CONNECT_POSTFIX_MAP[x] for x in common.CONNECT_POSTFIX_MAP if handler.path.endswith(x))
-                    common.CONNECT_HOSTS_MAP[handler.path] = hostname
-                elif host in common.HOSTS_MAP:
-                    hostname = common.HOSTS_MAP[host]
-                elif host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                    hostname = next(common.HOSTS_POSTFIX_MAP[x] for x in common.HOSTS_POSTFIX_MAP if host.endswith(x))
-                    common.HOSTS_MAP[host] = hostname
+            if handler.path in common.HOSTPORT_MAP or handler.path.endswith(common.HOSTPORT_POSTFIX_ENDSWITH) or host in common.HOST_MAP or host.endswith(common.HOST_POSTFIX_ENDSWITH):
+                if handler.path in common.HOSTPORT_MAP:
+                    hostname = common.HOSTPORT_MAP[handler.path]
+                elif handler.path.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
+                    hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if handler.path.endswith(x))
+                    common.HOSTPORT_MAP[handler.path] = hostname
+                elif host in common.HOST_MAP:
+                    hostname = common.HOST_MAP[host]
+                elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
+                    hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
+                    common.HOST_MAP[host] = hostname
                 else:
                     hostname = host
                 hostname = hostname or host
@@ -1949,17 +1948,17 @@ class HostsFilter(BaseProxyHandlerFilter):
                 cache_key = '%s:%s' % (hostname, port)
                 return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
         else:
-            if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                if any(x(handler.path) for x in common.METHOD_REMATCH_MAP):
-                    hostname = next(common.METHOD_REMATCH_MAP[x] for x in common.METHOD_REMATCH_MAP if x(handler.path))
-                elif host in common.HOSTS_MAP:
-                    hostname = common.HOSTS_MAP[host]
-                elif host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                    hostname = next(common.HOSTS_POSTFIX_MAP[x] for x in common.HOSTS_POSTFIX_MAP if host.endswith(x))
-                    common.HOSTS_MAP[host] = hostname
+            if any(x(handler.path) for x in common.URLRE_MAP) or host in common.HOST_MAP or host.endswith(common.HOST_POSTFIX_ENDSWITH):
+                if any(x(handler.path) for x in common.URLRE_MAP):
+                    hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path))
+                elif host in common.HOST_MAP:
+                    hostname = common.HOST_MAP[host]
+                elif host.endswith(common.HOST_POSTFIX_ENDSWITH):
+                    hostname = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if host.endswith(x))
+                    common.HOST_MAP[host] = hostname
                 else:
                     hostname = host
-                if common.METHOD_REMATCH_HAS_LOCALFILE and hostname.startswith('file://'):
+                if common.URLRE_HAS_LOCALFILE and hostname.startswith('file://'):
                     filename = hostname.lstrip('file://')
                     if os.name == 'nt':
                         filename = filename.lstrip('/')
@@ -2046,10 +2045,10 @@ class GAEProxyHandler(AdvancedProxyHandler):
         random.shuffle(common.GAE_APPIDS)
         for appid in common.GAE_APPIDS:
             host = '%s.appspot.com' % appid
-            if host not in common.HOSTS_MAP:
-                common.HOSTS_MAP[host] = common.HOSTS_POSTFIX_MAP['.appspot.com']
+            if host not in common.HOST_MAP:
+                common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.appspot.com']
             if host not in self.dns_cache:
-                self.dns_cache[host] = common.IPLIST_MAP[common.HOSTS_MAP[host]]
+                self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -2092,7 +2091,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
         # post data
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
-        cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+        cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
         response = self.create_http_request(request_method, fetchserver, request_headers, body, self.connect_timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
@@ -2146,8 +2145,8 @@ class PHPProxyHandler(AdvancedProxyHandler):
             common.resolve_iplist()
             fetchhost = re.sub(r':\d+$', '', urlparse.urlsplit(common.PHP_FETCHSERVER).netloc)
             logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
-            if common.PHP_USEHOSTS and fetchhost in common.HOSTS_MAP:
-                hostname = common.HOSTS_MAP[fetchhost]
+            if common.PHP_USEHOSTS and fetchhost in common.HOST_MAP:
+                hostname = common.HOST_MAP[fetchhost]
                 fetchhost_iplist = sum([socket.gethostbyname_ex(x)[-1] for x in common.IPLIST_MAP.get(hostname) or hostname.split('|')], [])
             else:
                 fetchhost_iplist = self.gethostbyname2(fetchhost)
@@ -2685,7 +2684,6 @@ class BlackholeFilter(BaseProxyHandlerFilter):
     one_pixel_gif = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
     def filter(self, handler):
-        urlparts = urlparse.urlsplit(handler.path)
         if handler.command == 'CONNECT':
             return [handler.STRIPSSL, self]
         elif handler.path.startswith(('http://', 'https://')):
@@ -2693,7 +2691,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
                        'Connection': 'close'}
             content = ''
-            if urlparts.path.lower().endswith(('.jpg', '.gif', '.png','.jpeg', '.bmp')):
+            if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png','.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
             return [handler.MOCK, 200, headers, content]
