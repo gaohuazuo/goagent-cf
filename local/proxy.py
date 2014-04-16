@@ -662,7 +662,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """SimpleProxyHandler for GoAgent 3.x"""
 
     protocol_version = 'HTTP/1.1'
-    ssl_version = ssl.PROTOCOL_SSLv23
+    ssl_version = ssl.PROTOCOL_TLSv1
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
