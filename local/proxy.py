@@ -670,6 +670,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     connect_timeout = 8
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
+    sticky_filter = None
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -826,7 +827,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def STRIPSSL(self):
+    def STRIPSSL(self, sticky_filter=None):
         """strip ssl"""
         certfile = CertUtil.get_cert(self.host)
         logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
@@ -858,6 +859,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         self.scheme = 'https'
+        self.sticky_filter = sticky_filter
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
@@ -1019,6 +1021,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD(self):
         self.parse_header()
         self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
+        if self.sticky_filter:
+            action = self.sticky_filter.filter(self)
+            if action:
+                return action.pop(0)(*action)
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
@@ -1874,7 +1880,7 @@ class WithGAEFilter(BaseProxyHandlerFilter):
         if handler.host in common.HTTP_WITHGAE:
             logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
             if handler.command == 'CONNECT':
-                return [handler.STRIPSSL]
+                return [handler.STRIPSSL, self]
             kwargs = {}
             if common.GAE_PASSWORD:
                 kwargs['password'] = common.GAE_PASSWORD
@@ -1897,7 +1903,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, None]
 
 
 class HostsFilter(BaseProxyHandlerFilter):
@@ -2006,7 +2012,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self if not common.URLRE_MAP else None]
         else:
             kwargs = {}
             if common.GAE_PASSWORD:
@@ -2107,7 +2113,7 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self]
         else:
             kwargs = {}
             if common.PHP_PASSWORD:
@@ -2669,7 +2675,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL]
+            return [handler.STRIPSSL, self]
         elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
