@@ -1939,8 +1939,11 @@ class HostsFilter(BaseProxyHandlerFilter):
         elif hostport.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
             hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if hostport.endswith(x)) or host
             common.HOSTPORT_MAP[hostport] = hostname
-        if handler.command != 'CONNECT' and any(x(handler.path) for x in common.URLRE_MAP):
-            hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path)) or host
+        if handler.command != 'CONNECT' and common.URLRE_MAP:
+            try:
+                hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(handler.path)) or host
+            except StopIteration:
+                pass
         if not hostname:
             return None
         elif hostname in common.IPLIST_MAP:
