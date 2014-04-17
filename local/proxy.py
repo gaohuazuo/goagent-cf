@@ -64,6 +64,7 @@ import errno
 import time
 import struct
 import collections
+import binascii
 import zlib
 import itertools
 import re
@@ -330,15 +331,21 @@ class CertUtil(object):
     @staticmethod
     def import_ca(certfile):
         commonname = os.path.splitext(os.path.basename(certfile))[0]
+        sha1digest = 'AB:70:2C:DF:18:EB:E8:B4:38:C5:28:69:CD:4A:5D:EF:48:B4:0E:33'
         if OpenSSL:
             try:
                 with open(certfile, 'rb') as fp:
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
                     commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
+                    sha1digest = x509.digest('sha1')
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
-            import ctypes
+            import ctypes, ctypes.wintypes
+            X509_ASN_ENCODING = 0x00000001
+            CERT_FIND_HASH = 0x10000
+            class CRYPT_HASH_BLOB(ctypes.Structure):
+                _fields_ = [('cbData', ctypes.wintypes.DWORD), ('pbData', ctypes.c_char_p)]
             with open(certfile, 'rb') as fp:
                 certdata = fp.read()
                 if certdata.startswith(b'-----'):
@@ -349,7 +356,10 @@ class CertUtil(object):
                 store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
                 if not store_handle:
                     return -1
-                if crypt32.CertFindCertificateInStore(store_handle, 0x1, 0, 0x80007, CertUtil.ca_vendor.decode(), None):
+                crypt_hash = CRYPT_HASH_BLOB()
+                crypt_hash.cbData = 20
+                crypt_hash.pbData = ctypes.c_char_p(binascii.a2b_hex(sha1digest.replace(':', '')))
+                if crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_HASH, ctypes.byref(crypt_hash), None):
                     return 0
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
                 crypt32.CertCloseStore(store_handle, 0)
