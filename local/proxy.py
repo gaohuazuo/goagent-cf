@@ -827,6 +827,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def MOCK(self, status, headers, content):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
+        headers = {k.title(): v for k, v in headers.items()}
+        if 'Transfer-Encoding' in headers:
+            del headers['Transfer-Encoding']
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
         if 'Connection' not in headers:
@@ -975,7 +978,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
                 # appid over qouta, switch to next appid
                 if response.app_status >= 500:
-                    if i < max_retry - 1:
+                    if i == max_retry - 1:
+                        headers = dict(response.getheaders())
+                        content = response.read()
+                        response.close()
+                        logging.warning('URLFETCH fetchserver=%r return %d, failed.', response.app_status, fetchserver)
+                        return self.MOCK(response.app_status, headers, content)
+                    else:
                         response.close()
                         fetchserver = random.choice(fetchservers)
                         logging.info('URLFETCH return %d, trying another fetchserver=%r', response.app_status, fetchserver)
