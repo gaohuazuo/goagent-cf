@@ -1334,7 +1334,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     return sock
                 elif i == 0:
                     # only output first error
-                    logging.warning('create_connection to %s return %r, try again.', addrs, sock)
+                    logging.warning('create_tcp_connection to %r with %s return %r, try again.', hostname, addrs, sock)
         if isinstance(sock, Exception):
             raise sock
 
@@ -1489,7 +1489,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     return sock
                 elif i == 0:
                     # only output first error
-                    logging.warning('create_ssl_connection to %s return %r, try again.', addrs, sock)
+                    logging.warning('create_ssl_connection to %r with %s return %r, try again.', hostname, addrs, sock)
         if isinstance(sock, Exception):
             raise sock
 
