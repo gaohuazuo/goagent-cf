@@ -2821,6 +2821,8 @@ def pre_start():
         logging.error('dnslib not found, please put dnslib-0.8.3.egg to %r!', os.path.dirname(os.path.abspath(__file__)))
         sys.exit(-1)
     if not common.DNS_ENABLE:
+        if not common.HTTP_DNS:
+            common.HTTP_DNS = common.DNS_SERVERS[:]
         for dnsservers_ref in (common.HTTP_DNS, common.DNS_SERVERS):
             any(dnsservers_ref.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in dnsservers_ref])
         AdvancedProxyHandler.dns_servers = common.HTTP_DNS
