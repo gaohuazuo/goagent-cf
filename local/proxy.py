@@ -936,6 +936,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for key, value in response.getheaders():
                 self.send_header(key, value)
             self.end_headers()
+            if self.command == 'HEAD' or response.status in (204, 304):
+                response.close()
+                return
             need_chunked = 'Transfer-Encoding' in response_headers
             while True:
                 data = response.read(8192)
@@ -999,6 +1002,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.send_header(key, value)
                     self.end_headers()
                     headers_sent = True
+                if self.command == 'HEAD' or response.status in (204, 304):
+                    response.close()
+                    return
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
                 accept_ranges = response.getheader('Accept-Ranges', 'none')
