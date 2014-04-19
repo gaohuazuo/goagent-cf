@@ -985,7 +985,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         headers = dict(response.getheaders())
                         content = response.read()
                         response.close()
-                        logging.warning('URLFETCH fetchserver=%r return %d, failed.', response.app_status, fetchserver)
+                        logging.warning('URLFETCH fetchserver=%r return %d, failed.', fetchserver, response.app_status)
                         return self.MOCK(response.app_status, headers, content)
                     else:
                         response.close()
