@@ -64,6 +64,7 @@ import errno
 import time
 import struct
 import collections
+import binascii
 import zlib
 import itertools
 import re
@@ -330,11 +331,13 @@ class CertUtil(object):
     @staticmethod
     def import_ca(certfile):
         commonname = os.path.splitext(os.path.basename(certfile))[0]
+        sha1digest = 'AB:70:2C:DF:18:EB:E8:B4:38:C5:28:69:CD:4A:5D:EF:48:B4:0E:33'
         if OpenSSL:
             try:
                 with open(certfile, 'rb') as fp:
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
                     commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
+                    sha1digest = x509.digest('sha1')
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
@@ -349,7 +352,14 @@ class CertUtil(object):
                 store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
                 if not store_handle:
                     return -1
-                if crypt32.CertFindCertificateInStore(store_handle, 0x1, 0, 0x80007, CertUtil.ca_vendor.decode(), None):
+                X509_ASN_ENCODING = 0x00000001
+                CERT_FIND_HASH = 0x10000
+                class CRYPT_HASH_BLOB(ctypes.Structure):
+                    _fields_ = [('cbData', ctypes.c_ulong), ('pbData', ctypes.c_char_p)]
+                crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(sha1digest.replace(':', '')))
+                crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_HASH, ctypes.byref(crypt_hash), None)
+                if crypt_handle:
+                    crypt32.CertFreeCertificateContext(crypt_handle)
                     return 0
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
                 crypt32.CertCloseStore(store_handle, 0)
@@ -817,6 +827,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def MOCK(self, status, headers, content):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
+        headers = {k.title(): v for k, v in headers.items()}
+        if 'Transfer-Encoding' in headers:
+            del headers['Transfer-Encoding']
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
         if 'Connection' not in headers:
@@ -923,6 +936,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for key, value in response.getheaders():
                 self.send_header(key, value)
             self.end_headers()
+            if self.command == 'HEAD' or response.status in (204, 304):
+                response.close()
+                return
             need_chunked = 'Transfer-Encoding' in response_headers
             while True:
                 data = response.read(8192)
@@ -965,7 +981,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
                 # appid over qouta, switch to next appid
                 if response.app_status >= 500:
-                    if i < max_retry - 1:
+                    if i == max_retry - 1:
+                        headers = dict(response.getheaders())
+                        content = response.read()
+                        response.close()
+                        logging.warning('URLFETCH fetchserver=%r return %d, failed.', response.app_status, fetchserver)
+                        return self.MOCK(response.app_status, headers, content)
+                    else:
                         response.close()
                         fetchserver = random.choice(fetchservers)
                         logging.info('URLFETCH return %d, trying another fetchserver=%r', response.app_status, fetchserver)
@@ -980,6 +1002,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.send_header(key, value)
                     self.end_headers()
                     headers_sent = True
+                if self.command == 'HEAD' or response.status in (204, 304):
+                    response.close()
+                    return
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
                 accept_ranges = response.getheader('Accept-Ranges', 'none')
