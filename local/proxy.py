@@ -772,6 +772,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
+    def handle_urlfetch_error(self, fetchserver, response):
+        pass
+
     def parse_header(self):
         if self.command == 'CONNECT':
             netloc = self.path
@@ -981,6 +984,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
                 # appid over qouta, switch to next appid
                 if response.app_status >= 500:
+                    self.handle_urlfetch_error(fetchserver, response)
                     if i == max_retry - 1:
                         headers = dict(response.getheaders())
                         content = response.read()
@@ -989,8 +993,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return self.MOCK(response.app_status, headers, content)
                     else:
                         response.close()
-                        fetchserver = random.choice(fetchservers)
-                        logging.info('URLFETCH return %d, trying another fetchserver=%r', response.app_status, fetchserver)
+                        if len(fetchservers) > 1:
+                            fetchserver = random.choice(fetchservers[1:])
+                        logging.info('URLFETCH return %d, trying next fetchserver=%r', response.app_status, fetchserver)
                         continue
                 # first response, has no retry.
                 if not headers_sent and not raw_response:
