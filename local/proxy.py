@@ -982,71 +982,72 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for i in xrange(max_retry):
             try:
                 response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
-                # appid over qouta, switch to next appid
-                if response.app_status >= 500:
-                    self.handle_urlfetch_error(fetchserver, response)
-                    if i == max_retry - 1:
-                        headers = dict(response.getheaders())
-                        content = response.read()
-                        response.close()
-                        logging.warning('URLFETCH fetchserver=%r return %d, failed.', fetchserver, response.app_status)
-                        return self.MOCK(response.app_status, headers, content)
-                    else:
-                        response.close()
-                        if len(fetchservers) > 1:
-                            fetchserver = random.choice(fetchservers[1:])
-                        logging.info('URLFETCH return %d, trying next fetchserver=%r', response.app_status, fetchserver)
-                        continue
-                # first response, has no retry.
-                if not headers_sent and not raw_response:
-                    logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
-                    if response.status == 206:
-                        return RangeFetch(self, response, fetchservers, **kwargs).fetch()
-                    self.send_response(response.status)
-                    for key, value in response.getheaders():
-                        self.send_header(key, value)
-                    self.end_headers()
-                    headers_sent = True
-                if self.command == 'HEAD' or response.status in (204, 304):
-                    response.close()
-                    return
-                content_length = int(response.getheader('Content-Length', 0))
-                content_range = response.getheader('Content-Range', '')
-                accept_ranges = response.getheader('Accept-Ranges', 'none')
-                need_chunked = response.getheader('Transfer-Encoding', '') and not raw_response
-                if content_range:
-                    start, end = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2))
+                if response.app_status < 400:
+                    break
                 else:
-                    start, end = 0, content_length-1
-                while True:
-                    data = response.read(8192)
-                    if not data:
-                        if need_chunked:
-                            self.wfile.write('0\r\n\r\n')
-                        response.close()
-                        return
-                    start += len(data)
-                    if need_chunked:
-                        self.wfile.write('%x\r\n' % len(data))
-                    self.wfile.write(data)
-                    if need_chunked:
-                        self.wfile.write('\r\n')
-                    del data
-                    if start >= end and not raw_response:
-                        response.close()
-                        return
-            except NetWorkIOError as e:
-                if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
-                    return
+                    self.handle_urlfetch_error(fetchserver, response)
+                if i < max_retry - 1:
+                    if len(fetchservers) > 1:
+                        fetchserver = random.choice(fetchservers[1:])
+                    logging.info('URLFETCH return %d, trying fetchserver=%r', response.app_status, fetchserver)
+                    response.close()
             except Exception as e:
                 errors.append(e)
                 logging.info('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
-            finally:
-                if response:
-                    response.close()
         if len(errors) == max_retry:
-            content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, str(errors))
-            return self.MOCK(502, {'Content-Type': 'text/html'}, content)
+            if response and response.app_status >= 500:
+                status = response.app_status
+                headers = dict(response.getheaders())
+                content = response.read()
+                response.close()
+            else:
+                status = 502
+                headers = {'Content-Type': 'text/html'}
+                content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, '<br>'.join(repr(x) for x in errors))
+            return self.MOCK(status, headers, content)
+        logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
+        try:
+            if response.status == 206:
+                return RangeFetch(self, response, fetchservers, **kwargs).fetch()
+            self.send_response(response.status)
+            for key, value in response.getheaders():
+                self.send_header(key, value)
+            self.end_headers()
+            if self.command == 'HEAD' or response.status in (204, 304) or response.getheader('Content-Length') == '0':
+                response.close()
+                return
+            content_length = int(response.getheader('Content-Length', 0))
+            content_range = response.getheader('Content-Range', '')
+            accept_ranges = response.getheader('Accept-Ranges', 'none')
+            need_chunked = response.getheader('Transfer-Encoding', '') and not raw_response
+            if content_range:
+                start, end = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2))
+            else:
+                start, end = 0, content_length-1
+            while True:
+                data = response.read(8192)
+                if not data:
+                    if need_chunked:
+                        self.wfile.write('0\r\n\r\n')
+                    response.close()
+                    return
+                start += len(data)
+                if need_chunked:
+                    self.wfile.write('%x\r\n' % len(data))
+                self.wfile.write(data)
+                if need_chunked:
+                    self.wfile.write('\r\n')
+                if need_chunked and len(data) < 8192:
+                    self.wfile.write('0\r\n\r\n')
+                    response.close()
+                    return
+                del data
+                if start >= end and not raw_response:
+                    response.close()
+                    return
+        except NetWorkIOError as e:
+            if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
+                return
 
     def do_METHOD(self):
         self.parse_header()
@@ -2141,6 +2142,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
     def handle_urlfetch_error(self, fetchserver, response):
         gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
         if response.app_status == 503:
+            # appid over qouta, switch to next appid
             if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
