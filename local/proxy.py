@@ -2138,6 +2138,13 @@ class GAEProxyHandler(AdvancedProxyHandler):
                 response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         return response
 
+    def handle_urlfetch_error(self, fetchserver, response):
+        gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
+        if response.app_status == 503:
+            if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
+                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
+
 
 class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
