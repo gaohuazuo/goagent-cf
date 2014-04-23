@@ -637,7 +637,7 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
         if handler.command == 'CONNECT':
             return [handler.FORWARD, handler.host, handler.port, handler.connect_timeout]
         else:
-            return [handler.DIRECT]
+            return [handler.DIRECT, {}]
 
 
 class AuthFilter(BaseProxyHandlerFilter):
@@ -2025,6 +2025,8 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.command == 'CONNECT':
             return [handler.STRIPSSL, self if not common.URLRE_MAP else None]
+        elif handler.command == 'OPTIONS':
+            return [handler.DIRECT, {}]
         else:
             kwargs = {}
             if common.GAE_PASSWORD:
