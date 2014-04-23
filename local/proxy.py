@@ -1960,6 +1960,8 @@ class HostsFilter(BaseProxyHandlerFilter):
             return None
         elif hostname in common.IPLIST_MAP:
             handler.dns_cache[host] = common.IPLIST_MAP[hostname]
+        elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
+            handler.dns_cache[host] = [hostname]
         elif hostname.startswith('file://'):
             filename = hostname.lstrip('file://')
             if os.name == 'nt':
