@@ -1006,45 +1006,26 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, '<br>'.join(repr(x) for x in errors))
             return self.MOCK(status, headers, content)
         logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
+        self.close_connection = True
         try:
             if response.status == 206:
                 return RangeFetch(self, response, fetchservers, **kwargs).fetch()
-            self.send_response(response.status)
-            for key, value in response.getheaders():
-                self.send_header(key, value)
-            self.end_headers()
-            if self.command == 'HEAD' or response.status in (204, 304) or response.getheader('Content-Length') == '0':
-                response.close()
-                return
-            content_length = int(response.getheader('Content-Length', 0))
-            content_range = response.getheader('Content-Range', '')
-            accept_ranges = response.getheader('Accept-Ranges', 'none')
-            need_chunked = response.getheader('Transfer-Encoding', '') and not raw_response
-            if content_range:
-                start, end = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2))
-            else:
-                start, end = 0, content_length-1
+            if not raw_response:
+                self.send_response(response.status)
+                for key, value in response.getheaders():
+                    if key.title() == 'Transfer-Encoding':
+                        continue
+                    self.send_header(key, value)
+                self.end_headers()
+            bufsize = 8192
             while True:
-                data = response.read(8192)
+                data = response.read(bufsize)
+                if data:
+                    self.wfile.write(data)
                 if not data:
-                    if need_chunked:
-                        self.wfile.write('0\r\n\r\n')
                     response.close()
-                    return
-                start += len(data)
-                if need_chunked:
-                    self.wfile.write('%x\r\n' % len(data))
-                self.wfile.write(data)
-                if need_chunked:
-                    self.wfile.write('\r\n')
-                if need_chunked and len(data) < 8192:
-                    self.wfile.write('0\r\n\r\n')
-                    response.close()
-                    return
+                    break
                 del data
-                if start >= end and not raw_response:
-                    response.close()
-                    return
         except NetWorkIOError as e:
             if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
                 return
