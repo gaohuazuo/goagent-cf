@@ -964,7 +964,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response:
                 response.close()
 
-    def URLFETCH(self, fetchservers, max_retry=2, raw_response=False, kwargs={}):
+    def URLFETCH(self, fetchservers, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
         if self.path[0] == '/':
@@ -1010,7 +1010,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             if response.status == 206:
                 return RangeFetch(self, response, fetchservers, **kwargs).fetch()
-            if not raw_response:
+            if response.app_type == 'gae':
                 self.send_response(response.status)
                 for key, value in response.getheaders():
                     if key.title() == 'Transfer-Encoding':
@@ -1899,7 +1899,7 @@ class WithGAEFilter(BaseProxyHandlerFilter):
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
             fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, False, kwargs]
+            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
 
 
 class ForceHttpsFilter(BaseProxyHandlerFilter):
@@ -2036,7 +2036,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
             fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, False, kwargs]
+            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
 
 
 class GAEProxyHandler(AdvancedProxyHandler):
@@ -2100,6 +2100,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
         response = self.create_http_request(request_method, fetchserver, request_headers, body, self.connect_timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
+        response.app_type = 'gae'
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
             return response
@@ -2144,7 +2145,7 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
                 kwargs['password'] = common.PHP_PASSWORD
             if common.PHP_VALIDATE:
                 kwargs['validate'] = 1
-            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, True, kwargs]
+            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, kwargs]
 
 
 class PHPProxyHandler(AdvancedProxyHandler):
@@ -2193,6 +2194,7 @@ class PHPProxyHandler(AdvancedProxyHandler):
         if response.status >= 400:
             return response
         response.app_status = response.status
+        response.app_type = 'php'
         need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
