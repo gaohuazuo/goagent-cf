@@ -1006,7 +1006,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, '<br>'.join(repr(x) for x in errors))
             return self.MOCK(status, headers, content)
         logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
-        self.close_connection = True
         try:
             if response.status == 206:
                 return RangeFetch(self, response, fetchservers, **kwargs).fetch()
