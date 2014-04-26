@@ -1009,6 +1009,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             if response.status == 206:
                 return RangeFetch(self, response, fetchservers, **kwargs).fetch()
+            elif response.status >= 300:
+                self.close_connection = True
             if response.app_type == 'gae':
                 self.send_response(response.status)
                 for key, value in response.getheaders():
