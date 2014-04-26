@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.5'
+__version__ = '3.1.10'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -236,8 +236,7 @@ def application(environ, start_response):
         elif 'deflate' in accept_encoding:
             response_headers['Content-Encoding'] = 'deflate'
             data = deflate(data)
-    if data:
-        response_headers['Content-Length'] = str(len(data))
+    response_headers['Content-Length'] = str(len(data))
     response_headers_data = deflate('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))
     if 'rc4' not in options or content_type.startswith(('audio/', 'image/', 'video/')):
         start_response('200 OK', [('Content-Type', __content_type__)])
