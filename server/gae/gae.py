@@ -171,7 +171,8 @@ def application(environ, start_response):
 
     deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
-    accept_encoding = headers.get('Accept-Encoding', '')
+    # https://www.freebsdchina.org/forum/viewtopic.php?t=54269
+    accept_encoding = headers.get('Accept-Encoding', '') or headers.get('Bccept-Encoding', '')
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', URLFETCH_MAX))):
         try:
