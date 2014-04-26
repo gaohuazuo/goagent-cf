@@ -1890,15 +1890,8 @@ class WithGAEFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.host in common.HTTP_WITHGAE:
             logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
-            if handler.command == 'CONNECT':
-                return [handler.STRIPSSL, self]
-            kwargs = {}
-            if common.GAE_PASSWORD:
-                kwargs['password'] = common.GAE_PASSWORD
-            if common.GAE_VALIDATE:
-                kwargs['validate'] = 1
-            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
+            # assume the last one handler is GAEFetchFilter
+            return handler.handler_filters[-1].filter(handler)
 
 
 class ForceHttpsFilter(BaseProxyHandlerFilter):
@@ -1914,6 +1907,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
+            logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
             return [handler.STRIPSSL, None]
 
 
