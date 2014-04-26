@@ -1988,8 +1988,8 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             pass
         try:
             country_code = self.geoip.country_code_by_addr(socket.gethostbyname(hostname))
-        except Exception:
-            country_code = ''
+        except Exception as e:
+            logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
         self.region_cache[hostname] = country_code
         return country_code
 
