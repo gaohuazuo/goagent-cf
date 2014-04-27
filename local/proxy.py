@@ -2022,7 +2022,9 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.command == 'CONNECT':
             return [handler.STRIPSSL, self if not common.URLRE_MAP else None]
-        elif handler.command == 'OPTIONS':
+        elif handler.command in ('OPTIONS',):
+            # if common.PHP_ENABLE:
+            #     return PHPProxyHandler.handler_filters[-1].filter(handler)
             return [handler.DIRECT, {}]
         else:
             kwargs = {}
