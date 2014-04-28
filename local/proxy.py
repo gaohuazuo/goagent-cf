@@ -1965,8 +1965,11 @@ class HostsFilter(BaseProxyHandlerFilter):
         if handler.command == 'CONNECT':
             return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
         else:
-            crlf = host.endswith(common.HTTP_CRLFSITES)
-            return [handler.DIRECT, {'cache_key': cache_key, 'crlf': crlf}]
+            if host.endswith(common.HTTP_CRLFSITES):
+                handler.close_connection = True
+                return [handler.DIRECT, {'crlf': True}]
+            else:
+                return [handler.DIRECT, {'cache_key': cache_key}]
 
 
 class DirectRegionFilter(BaseProxyHandlerFilter):
