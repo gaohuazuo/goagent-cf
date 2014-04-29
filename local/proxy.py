@@ -843,7 +843,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def STRIPSSL(self, sticky_filter=None):
+    def STRIP(self, sticky_filter=None):
         """strip ssl"""
         certfile = CertUtil.get_cert(self.host)
         logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
@@ -1909,7 +1909,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
-            return [handler.STRIPSSL, None]
+            return [handler.STRIP, None]
 
 
 class HostsFilter(BaseProxyHandlerFilter):
@@ -2024,7 +2024,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL, self if not common.URLRE_MAP else None]
+            return [handler.STRIP, self if not common.URLRE_MAP else None]
         elif handler.command in ('OPTIONS',):
             # if common.PHP_ENABLE:
             #     return PHPProxyHandler.handler_filters[-1].filter(handler)
@@ -2138,7 +2138,7 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL, self]
+            return [handler.STRIP, self]
         else:
             kwargs = {}
             if common.PHP_PASSWORD:
@@ -2701,7 +2701,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIPSSL, self]
+            return [handler.STRIP, self]
         elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
