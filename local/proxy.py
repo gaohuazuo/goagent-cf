@@ -643,6 +643,7 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
 class AuthFilter(BaseProxyHandlerFilter):
     """authorization filter"""
     auth_info = "Proxy authentication required"""
+    white_list = set(['127.0.0.1'])
 
     def __init__(self, username, password):
         self.username = username
@@ -657,6 +658,8 @@ class AuthFilter(BaseProxyHandlerFilter):
         return False
 
     def filter(self, handler):
+        if self.white_list and handler.client_address[0] in self.white_list:
+            return None
         auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
         if auth_header and self.check_auth_header(auth_header):
             handler.auth_header = auth_header
