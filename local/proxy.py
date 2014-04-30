@@ -625,6 +625,28 @@ def is_clienthello(data):
         return False
 
 
+def extract_sni_name(packet):
+    if packet.startswith('\x16\x03'):
+        stream = io.BytesIO(packet)
+        stream.read(0x2b)
+        session_id_length = ord(stream.read(1))
+        stream.read(session_id_length)
+        cipher_suites_length, = struct.unpack('>h', stream.read(2))
+        stream.read(cipher_suites_length+2)
+        extensions_length, = struct.unpack('>h', stream.read(2))
+        extensions = {}
+        while True:
+            data = stream.read(2)
+            if not data:
+                break
+            etype, = struct.unpack('>h', data)
+            elen, = struct.unpack('>h', stream.read(2))
+            edata = stream.read(elen)
+            if etype == 0:
+                server_name = edata[5:]
+                return server_name
+
+
 class BaseProxyHandlerFilter(object):
     """base proxy handler filter"""
     def filter(self, handler):
@@ -676,6 +698,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
     ssl_version = ssl.PROTOCOL_SSLv23
+    disable_transport_ssl = True
+    default_transport_ssl_port = 443
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
@@ -736,6 +760,21 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.__class__.do_DELETE = self.__class__.do_METHOD
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
         self.setup()
+
+    def handle_one_request(self):
+        if not self.disable_transport_ssl:
+            leadbyte = self.connection.recv(1, socket.MSG_PEEK)
+            if leadbyte == '\x16':
+                for _ in xrange(3):
+                    leaddata = self.connection.recv(1024, socket.MSG_PEEK)
+                    if is_clienthello(leaddata):
+                        break
+                else:
+                    raise ValueError('%r is not a vaild SSL/TLS ClientHello packet', leaddata)
+                server_name = extract_sni_name(leaddata)
+                mock_header = 'CONNECT %s:%d\r\n\r\n' % (server_name, self.default_transport_ssl_port)
+                self.rfile._rbuf = io.BytesIO(mock_header)
+        return BaseHTTPServer.BaseHTTPRequestHandler.handle_one_request(self)
 
     def first_run(self):
         pass
@@ -2270,43 +2309,6 @@ class GreenForwardMixin:
         bufsize = self.bufsize
         thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
         GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
-
-def extract_sni_name(packet):
-    if packet.startswith('\x16\x03'):
-        stream = io.BytesIO(packet)
-        stream.read(0x2b)
-        session_id_length = ord(stream.read(1))
-        stream.read(session_id_length)
-        cipher_suites_length, = struct.unpack('>h', stream.read(2))
-        stream.read(cipher_suites_length+2)
-        extensions_length, = struct.unpack('>h', stream.read(2))
-        extensions = {}
-        while True:
-            data = stream.read(2)
-            if not data:
-                break
-            etype, = struct.unpack('>h', data)
-            elen, = struct.unpack('>h', stream.read(2))
-            edata = stream.read(elen)
-            if etype == 0:
-                server_name = edata[5:]
-                return server_name
-
-
-def BaseHTTPRequestHandler_handle_one_request(self):
-    server_port = 443
-    leadbyte = self.connection.recv(1, MSG_PEEK)
-    if leadbyte == '\x16':
-        for _ in xrange(3):
-            leaddata = self.connection.recv(1024, MSG_PEEK)
-            if is_clienthello(leaddata):
-                break
-        else:
-            raise ValueError('%r is not a vaild SSL/TLS ClientHello packet', leaddata)
-        server_name = extract_sni_name(leaddata)
-        mock_header = 'CONNECT %s:%d\r\n\r\n' % (server_name, server_port)
-        self.rfile._rbuf = io.BytesIO(mock_header)
-    return BaseHTTPRequestHandler.handle_one_request(self)
 
 
 class ProxyChainGAEProxyHandler(ProxyChainMixin, GAEProxyHandler):
