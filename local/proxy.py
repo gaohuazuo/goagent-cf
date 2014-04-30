@@ -2113,7 +2113,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
         data = response.read(4)
         if len(data) < 4:
             response.status = 502
-            response.fp = io.BytesIO(b'connection aborted. too short leadtype data=' + data)
+            response.fp = io.BytesIO(b'connection aborted. too short leadbyte data=' + data)
             response.read = response.fp.read
             return response
         response.status, headers_length = struct.unpack('!hh', data)
@@ -2270,6 +2270,43 @@ class GreenForwardMixin:
         bufsize = self.bufsize
         thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
         GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
+
+def extract_sni_name(packet):
+    if packet.startswith('\x16\x03'):
+        stream = io.BytesIO(packet)
+        stream.read(0x2b)
+        session_id_length = ord(stream.read(1))
+        stream.read(session_id_length)
+        cipher_suites_length, = struct.unpack('>h', stream.read(2))
+        stream.read(cipher_suites_length+2)
+        extensions_length, = struct.unpack('>h', stream.read(2))
+        extensions = {}
+        while True:
+            data = stream.read(2)
+            if not data:
+                break
+            etype, = struct.unpack('>h', data)
+            elen, = struct.unpack('>h', stream.read(2))
+            edata = stream.read(elen)
+            if etype == 0:
+                server_name = edata[5:]
+                return server_name
+
+
+def BaseHTTPRequestHandler_handle_one_request(self):
+    server_port = 443
+    leadbyte = self.connection.recv(1, MSG_PEEK)
+    if leadbyte == '\x16':
+        for _ in xrange(3):
+            leaddata = self.connection.recv(1024, MSG_PEEK)
+            if is_clienthello(leaddata):
+                break
+        else:
+            raise ValueError('%r is not a vaild SSL/TLS ClientHello packet', leaddata)
+        server_name = extract_sni_name(leaddata)
+        mock_header = 'CONNECT %s:%d\r\n\r\n' % (server_name, server_port)
+        self.rfile._rbuf = io.BytesIO(mock_header)
+    return BaseHTTPRequestHandler.handle_one_request(self)
 
 
 class ProxyChainGAEProxyHandler(ProxyChainMixin, GAEProxyHandler):
