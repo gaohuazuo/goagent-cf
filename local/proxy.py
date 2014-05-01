@@ -762,7 +762,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.setup()
 
     def handle_one_request(self):
-        if not self.disable_transport_ssl:
+        if not self.disable_transport_ssl and self.scheme == 'http':
             leadbyte = self.connection.recv(1, socket.MSG_PEEK)
             if leadbyte == '\x16':
                 for _ in xrange(3):
@@ -772,7 +772,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     raise ValueError('%r is not a vaild SSL/TLS ClientHello packet', leaddata)
                 server_name = extract_sni_name(leaddata)
-                mock_header = 'CONNECT %s:%d\r\n\r\n' % (server_name, self.default_transport_ssl_port)
+                mock_header = 'CONNECT %s:%d HTTP/1.1\r\n\r\n' % (server_name, self.default_transport_ssl_port)
                 self.rfile._rbuf = io.BytesIO(mock_header)
         return BaseHTTPServer.BaseHTTPRequestHandler.handle_one_request(self)
 
