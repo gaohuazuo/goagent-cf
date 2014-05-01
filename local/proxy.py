@@ -764,16 +764,27 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_one_request(self):
         if not self.disable_transport_ssl and self.scheme == 'http':
             leadbyte = self.connection.recv(1, socket.MSG_PEEK)
-            if leadbyte == '\x16':
-                for _ in xrange(3):
-                    leaddata = self.connection.recv(1024, socket.MSG_PEEK)
-                    if is_clienthello(leaddata):
-                        break
-                else:
-                    raise ValueError('%r is not a vaild SSL/TLS ClientHello packet', leaddata)
-                server_name = extract_sni_name(leaddata)
-                mock_header = 'CONNECT %s:%d HTTP/1.1\r\n\r\n' % (server_name, self.default_transport_ssl_port)
-                self.rfile._rbuf = io.BytesIO(mock_header)
+            if leadbyte in ('\x80', '\x16'):
+                server_name = 'www.google.com'
+                if leadbyte == '\x16':
+                    for _ in xrange(2):
+                        leaddata = self.connection.recv(1024, socket.MSG_PEEK)
+                        if is_clienthello(leaddata):
+                            try:
+                                server_name = extract_sni_name(leaddata)
+                            finally:
+                                break
+                try:
+                    certfile = CertUtil.get_cert(server_name)
+                    ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
+                except Exception as e:
+                    if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                        logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+                    return
+                self.connection = ssl_sock
+                self.rfile = self.connection.makefile('rb', self.bufsize)
+                self.wfile = self.connection.makefile('wb', 0)
+                self.scheme = 'https'
         return BaseHTTPServer.BaseHTTPRequestHandler.handle_one_request(self)
 
     def first_run(self):
