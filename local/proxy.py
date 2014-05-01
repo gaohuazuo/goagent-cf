@@ -765,7 +765,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not self.disable_transport_ssl and self.scheme == 'http':
             leadbyte = self.connection.recv(1, socket.MSG_PEEK)
             if leadbyte in ('\x80', '\x16'):
-                server_name = 'www.google.com'
+                server_name = ''
                 if leadbyte == '\x16':
                     for _ in xrange(2):
                         leaddata = self.connection.recv(1024, socket.MSG_PEEK)
@@ -775,7 +775,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             finally:
                                 break
                 try:
-                    certfile = CertUtil.get_cert(server_name)
+                    certfile = CertUtil.get_cert(server_name or 'www.google.com')
                     ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
                 except Exception as e:
                     if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
