@@ -699,7 +699,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     ssl_version = ssl.PROTOCOL_SSLv23
     disable_transport_ssl = True
-    default_transport_ssl_port = 443
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
@@ -774,17 +773,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                 server_name = extract_sni_name(leaddata)
                             finally:
                                 break
-                # if server_name:
-                #     self.command = 'CONNECT'
-                #     self.path = '%s:%d' % (server_name, self.default_transport_ssl_port)
-                #     self.request_version = self.protocol_version
-                #     self.headers = self.MessageClass(io.BytesIO('\r\n'))
-                #     self.host = server_name
-                #     self.port = self.default_transport_ssl_port
-                #     for handler_filter in self.handler_filters:
-                #         action = handler_filter.filter(self)
-                #         if action:
-                #             return action.pop(0)(*action)
                 try:
                     certfile = CertUtil.get_cert(server_name or 'www.google.com')
                     ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
