@@ -5,7 +5,7 @@ function FindProxyForURL(url, host) {
     var defaultproxy = 'DIRECT';
     if (isPlainHostName(host) ||
         shExpMatch(host, 'localhost.*') ||
-        host == '127.0.0.1') {
+        host.indexOf('127.') == 0) {
         return 'DIRECT';
     } else if (FindProxyForURLByAdblock(url, host) != defaultproxy ||
                host == 'p.tanx.com' ||
