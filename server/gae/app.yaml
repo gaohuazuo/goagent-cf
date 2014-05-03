@@ -21,10 +21,6 @@ handlers:
   static_files: robots.txt
   upload: robots.txt
 
-- url: /.*
-  script: gae.mirror
-  secure: optional
-
 libraries:
 - name: pycrypto
   version: "latest"
