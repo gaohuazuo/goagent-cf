@@ -2723,11 +2723,15 @@ class PacFileFilter(BaseProxyHandlerFilter):
     """pac file filter"""
 
     def filter(self, handler):
+        is_local_client = handler.client_address[0] in ('127.0.0.1', '::1')
         pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
         urlparts = urlparse.urlsplit(handler.path)
         if handler.command == 'GET' and urlparts.path.lstrip('/') == common.PAC_FILE:
             if urlparts.query == 'flush':
-                thread.start_new_thread(PacUtil.update_pacfile, (pacfile,))
+                if is_local_client:
+                    thread.start_new_thread(PacUtil.update_pacfile, (pacfile,))
+                else:
+                    return [handler.MOCK, 403, {'Content-Type': 'text/plain'}, 'client address %r not allowed' % handler.client_address[0]]
             if time.time() - os.path.getmtime(pacfile) > common.PAC_EXPIRED:
                 # check system uptime > 30 minutes
                 uptime = get_uptime()
@@ -2735,7 +2739,7 @@ class PacFileFilter(BaseProxyHandlerFilter):
                     thread.start_new_thread(lambda: os.utime(pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(pacfile), tuple())
             with open(pacfile, 'rb') as fp:
                 content = fp.read()
-                if handler.client_address[0] not in ('127.0.0.1', '::1'):
+                if not is_local_client:
                     listen_ip = ProxyUtil.get_listen_ip()
                     content = content.replace('127.0.0.1', listen_ip)
                 headers = {'Content-Type': 'text/plain'}
