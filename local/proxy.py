@@ -37,7 +37,7 @@
 #      Toshio Xiang      <snachx@gmail.com>
 #      Bo Tian           <dxmtb@163.com>
 
-__version__ = '3.1.11b'
+__version__ = '3.1.11'
 
 import sys
 import os
@@ -548,7 +548,7 @@ class ProxyUtil(object):
         return listen_ip
 
 
-def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
+def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
     http://zh.wikipedia.org/wiki/域名服务器缓存污染
@@ -592,6 +592,51 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     finally:
         for sock in socks:
             sock.close()
+
+
+def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
+    """tcp query over tcp"""
+    def do_resolve(qname, dnsserver, timeout, queobj):
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
+        query_data = query.pack()
+        sock_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
+        sock = socket.socket(sock_family)
+        rfile = None
+        try:
+            sock.settimeout(timeout or None)
+            sock.connect((dnsserver, 53))
+            sock.send(struct.pack('>h', len(query_data)) + query_data)
+            rfile = sock.makefile('r', 1024)
+            reply_data_length = rfile.read(2)
+            if len(reply_data_length) < 2:
+                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
+            reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
+            reply = dnslib.DNSRecord.parse(reply_data)
+            rtypes = (1, 28) if sock_family is socket.AF_INET6 else (1,)
+            iplist = [str(x.rdata) for x in reply.rr if x.rtype in rtypes]
+            if any(x in blacklist for x in iplist):
+                logging.debug('query qname=%r dnsserver=%r reply bad iplist=%r', qname, dnsserver, iplist)
+                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
+            else:
+                logging.debug('query qname=%r dnsserver=%r reply iplist=%s', qname, dnsserver, iplist)
+                queobj.put(iplist)
+        except socket.error as e:
+            logging.debug('query qname=%r dnsserver=%r failed %r', qname, dnsserver, e)
+            queobj.put(e)
+        finally:
+            if rfile:
+                rfile.close()
+            sock.close()
+    queobj = Queue.Queue()
+    for dnsserver in dnsservers:
+        thread.start_new_thread(do_resolve, (qname, dnsserver, timeout, queobj))
+    for _ in range(len(dnsservers)):
+        iplist = queobj.get()
+        if iplist and not isinstance(iplist, Exception):
+            return iplist
+        else:
+            logging.warning('dns_resolve_over_tcp %r with %s return %r', qname, dnsservers, iplist)
+    raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
 
 
 def get_dnsserver_list():
@@ -1290,7 +1335,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
             elif self.dns_servers:
-                iplist = dns_remote_resolve(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
+                try:
+                    iplist = dns_resolve_over_udp(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
+                except socket.gaierror:
+                    iplist = dns_resolve_over_tcp(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
             self.dns_cache[hostname] = iplist
@@ -1756,7 +1804,7 @@ class Common(object):
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
             try:
-                iplist = dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)
+                iplist = dns_resolve_over_udp(host, dnsservers, self.DNS_BLACKLIST, timeout=2)
                 queue.put((host, dnsservers, iplist or []))
             except (socket.error, OSError) as e:
                 logging.warning('resolve remote host=%r failed: %s', host, e)
