@@ -2070,10 +2070,10 @@ class HostsFilter(BaseProxyHandlerFilter):
         elif hostname == host and host.endswith(common.DNS_TCPOVER) and host not in handler.dns_cache:
             try:
                 iplist = dns_resolve_over_tcp(host, handler.dns_servers, handler.dns_blacklist, 4)
-                logging.info('TcpoverDnsFilter resolve %r with %r return %s', host, handler.dns_servers, iplist)
+                logging.info('HostsFilter dns_resolve_over_tcp %r with %r return %s', host, handler.dns_servers, iplist)
                 handler.dns_cache[host] = iplist
             except socket.error as e:
-                logging.warning('TcpoverDnsFilter resolve %r with %r failed: %r', host, handler.dns_servers, e)
+                logging.warning('HostsFilter dns_resolve_over_tcp %r with %r failed: %r', host, handler.dns_servers, e)
         elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
             handler.dns_cache[host] = [hostname]
         elif hostname.startswith('file://'):
