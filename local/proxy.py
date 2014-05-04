@@ -630,11 +630,11 @@ def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
     queobj = Queue.Queue()
     for dnsserver in dnsservers:
         thread.start_new_thread(do_resolve, (qname, dnsserver, timeout, queobj))
-    for _ in range(len(dnsservers)):
+    for i in range(len(dnsservers)):
         iplist = queobj.get()
         if iplist and not isinstance(iplist, Exception):
             return iplist
-        else:
+        elif i == len(dnsservers) - 1:
             logging.warning('dns_resolve_over_tcp %r with %s return %r', qname, dnsservers, iplist)
     raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
 
@@ -1794,6 +1794,7 @@ class Common(object):
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
         self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
         self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
+        self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|'))
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -2066,6 +2067,13 @@ class HostsFilter(BaseProxyHandlerFilter):
             return None
         elif hostname in common.IPLIST_MAP:
             handler.dns_cache[host] = common.IPLIST_MAP[hostname]
+        elif hostname == host and host.endswith(common.DNS_TCPOVER) and host not in handler.dns_cache:
+            try:
+                iplist = dns_resolve_over_tcp(host, handler.dns_servers, handler.dns_blacklist, 4)
+                logging.info('TcpoverDnsFilter resolve %r with %r return %s', host, handler.dns_servers, iplist)
+                handler.dns_cache[host] = iplist
+            except socket.error as e:
+                logging.warning('TcpoverDnsFilter resolve %r with %r failed: %r', host, handler.dns_servers, e)
         elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
             handler.dns_cache[host] = [hostname]
         elif hostname.startswith('file://'):
