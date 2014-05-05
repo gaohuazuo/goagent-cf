@@ -338,7 +338,7 @@ class CertUtil(object):
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
                     commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
                     sha1digest = x509.digest('sha1')
-            except Exception as e:
+            except StandardError as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
             import ctypes
@@ -803,7 +803,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if isinstance(self.__class__.first_run, collections.Callable):
                         self.first_run()
                         self.__class__.first_run = None
-            except Exception as e:
+            except StandardError as e:
                 logging.exception('%s.first_run() return %r', self.__class__, e)
         self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         self.__class__.do_CONNECT = self.__class__.do_METHOD
@@ -831,7 +831,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 try:
                     certfile = CertUtil.get_cert(server_name or 'www.google.com')
                     ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
-                except Exception as e:
+                except StandardError as e:
                     if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                         logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
                     return
@@ -931,7 +931,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for sock in (remote, local):
                 try:
                     sock.close()
-                except Exception:
+                except StandardError:
                     pass
 
     def MOCK(self, status, headers, content):
@@ -959,7 +959,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if do_ssl_handshake:
             try:
                 ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
-            except Exception as e:
+            except StandardError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
                 return
@@ -1015,7 +1015,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not data_is_clienthello and remote and not isinstance(remote, Exception):
                     remote.sendall(data)
                 break
-            except Exception as e:
+            except StandardError as e:
                 logging.exception('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
                 if hasattr(remote, 'close'):
                     remote.close()
@@ -1229,7 +1229,7 @@ class RangeFetch(object):
                 self.handler.wfile.write(data)
                 self.expect_begin += len(data)
                 del data
-            except Exception as e:
+            except StandardError as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
@@ -1256,7 +1256,7 @@ class RangeFetch(object):
                         response = self.handler.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, **self.kwargs)
                 except Queue.Empty:
                     continue
-                except Exception as e:
+                except StandardError as e:
                     logging.warning("Response %r in __fetchlet", e)
                     range_queue.put((start, end, None))
                     continue
@@ -1296,7 +1296,7 @@ class RangeFetch(object):
                                 break
                             data_queue.put((start, data))
                             start += len(data)
-                        except Exception as e:
+                        except StandardError as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.handler.command, self.url, headers['Range'], e)
                             break
                     if start < end + 1:
@@ -1310,7 +1310,7 @@ class RangeFetch(object):
                     response.close()
                     range_queue.put((start, end, None))
                     continue
-            except Exception as e:
+            except StandardError as e:
                 logging.exception('RangeFetch._fetchlet error:%s', e)
                 raise
 
@@ -1611,7 +1611,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
                 sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key)
                 break
-            except Exception as e:
+            except StandardError as e:
                 logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
                 if sock:
                     sock.close()
@@ -1657,7 +1657,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 response.read()
                 response.close()
                 crlf_counter -= 1
-        except Exception as e:
+        except StandardError as e:
             logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
             if response:
                 if response.fp and response.fp._sock:
@@ -1970,7 +1970,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
     def close_request(self, request):
         try:
             request.close()
-        except Exception:
+        except StandardError:
             pass
 
     def finish_request(self, request, client_address):
@@ -2031,7 +2031,7 @@ class HostsFilter(BaseProxyHandlerFilter):
         try:
             import mimetypes
             content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
-        except Exception as e:
+        except StandardError as e:
             logging.error('import mimetypes failed: %r', e)
         try:
             with open(filename, 'rb') as fp:
@@ -2040,7 +2040,7 @@ class HostsFilter(BaseProxyHandlerFilter):
                 if content_type:
                     headers['Content-Type'] = content_type
                 return [handler.MOCK, 200, headers, data]
-        except Exception as e:
+        except StandardError as e:
             return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
 
     def filter(self, handler):
@@ -2104,7 +2104,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             pass
         try:
             country_code = self.geoip.country_code_by_addr(socket.gethostbyname(hostname))
-        except Exception as e:
+        except StandardError as e:
             logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
             country_code = ''
         self.region_cache[hostname] = country_code
@@ -2377,7 +2377,7 @@ class GreenForwardMixin:
             for sock in (dest, source):
                 try:
                     sock.close()
-                except Exception:
+                except StandardError:
                     pass
 
     def forward_socket(self, local, remote, timeout):
@@ -2485,7 +2485,7 @@ class PacUtil(object):
                 logging.info('%r downloaded and parsed', common.PAC_ADBLOCK)
             else:
                 content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return "DIRECT";}\r\n'
-        except Exception as e:
+        except StandardError as e:
             need_update = False
             logging.exception('update_pacfile failed: %r', e)
         try:
@@ -2498,7 +2498,7 @@ class PacUtil(object):
                 jsrule = PacUtil.autoproxy2pac_lite(autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default)
             content += '\r\n' + jsrule + '\r\n'
             logging.info('%r downloaded and parsed', common.PAC_GFWLIST)
-        except Exception as e:
+        except StandardError as e:
             need_update = False
             logging.exception('update_pacfile failed: %r', e)
         if need_update:
@@ -2890,7 +2890,7 @@ def get_process_list():
         try:
             import psutil
             process_list = psutil.get_process_list()
-        except Exception as e:
+        except StandardError as e:
             logging.exception('psutil.get_process_list() failed: %r', e)
     return process_list
 
