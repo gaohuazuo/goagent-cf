@@ -19,6 +19,7 @@ import io
 import string
 
 from google.appengine.api import urlfetch
+from google.appengine.api.taskqueue.taskqueue import MAX_URL_LENGTH
 from google.appengine.runtime import apiproxy_errors
 
 URLFETCH_MAX = 2
@@ -154,6 +155,11 @@ def application(environ, start_response):
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         yield message_html('403 Hosts Deny', 'Hosts Deny(%r)' % netloc, detail='url=%r' % url)
+        raise StopIteration
+
+    if len(url) > MAX_URL_LENGTH:
+        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        yield message_html('400 Bad Request', 'length of URL too long(greater than %r)' % MAX_URL_LENGTH, detail='url=%r' % url)
         raise StopIteration
 
     if netloc.startswith(('127.0.0.', '::1', 'localhost')):
