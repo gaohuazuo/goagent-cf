@@ -1085,11 +1085,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         body = self.body
         response = None
         errors = []
-        headers_sent = False
         fetchserver = fetchservers[0]
         for i in xrange(max_retry):
             try:
-                response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=self.connect_timeout, **kwargs)
+                response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=60, **kwargs)
                 if response.app_status < 400:
                     break
                 else:
@@ -1099,9 +1098,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         fetchserver = random.choice(fetchservers[1:])
                     logging.info('URLFETCH return %d, trying fetchserver=%r', response.app_status, fetchserver)
                     response.close()
-            except Exception as e:
+            except StandardError as e:
                 errors.append(e)
-                logging.info('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
+                logging.info('URLFETCH "%s %s" fetchserver=%r %r, retry...', method, url, fetchserver, e)
         if len(errors) == max_retry:
             if response and response.app_status >= 500:
                 status = response.app_status
@@ -2220,7 +2219,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self.create_http_request(request_method, fetchserver, request_headers, body, self.connect_timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
+        response = self.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_type = 'gae'
         response.app_options = response.getheader('X-GOA-Options', '')
@@ -2310,7 +2309,7 @@ class PHPProxyHandler(AdvancedProxyHandler):
         fetchserver += '?%s' % random.random()
         crlf = 0
         cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-        response = self.create_http_request('POST', fetchserver, app_headers, app_body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
+        response = self.create_http_request('POST', fetchserver, app_headers, app_body, timeout, crlf=crlf, cache_key=cache_key)
         if not response:
             raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
         if response.status >= 400:
