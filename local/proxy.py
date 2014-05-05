@@ -2103,7 +2103,9 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
-            if dnsservers:
+            if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
+                iplist = [hostname]
+            elif dnsservers:
                 iplist = dns_resolve_over_udp(hostname, dnsservers, [], 2)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
