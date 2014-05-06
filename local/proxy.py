@@ -541,10 +541,15 @@ class ProxyUtil(object):
 
     @staticmethod
     def get_listen_ip():
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(('8.8.8.8', 53))
-        listen_ip = sock.getsockname()[0]
-        sock.close()
+        listen_ip = '127.0.0.1'
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(('8.8.8.8', 53))
+            listen_ip = sock.getsockname()[0]
+        finally:
+            if sock:
+                sock.close()
         return listen_ip
 
 
