@@ -119,12 +119,14 @@ class ExpireCache(object):
             del v[key], ets[key]
 
 
-def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout, turstservers=()):
+def dns_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
     http://zh.wikipedia.org/wiki/域名服务器缓存污染
     http://support.microsoft.com/kb/241352
     """
+    blacklist = kwargs.get('blacklist', ())
+    turstservers = kwargs.get('turstservers', ())
     query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if ':' not in x]
@@ -171,8 +173,9 @@ def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout, turstservers=())
             sock.close()
 
 
-def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
+def dns_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
     """tcp query over tcp"""
+    blacklist = kwargs.get('blacklist', ())
     def do_resolve(qname, dnsserver, timeout, queobj):
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
         query_data = query.pack()
@@ -263,10 +266,9 @@ class DNSServer(gevent.server.DatagramServer):
             return
         dnsservers = self.dns_servers if not is_local_hostname else self.dns_intranet_servers
         try:
-            if qname.endswith(self.dns_tcpover):
-                record = dns_resolve_over_tcp(qname, dnsservers, self.dns_blacklist, self.dns_timeout)
-            else:
-                record = dns_resolve_over_udp(qname, dnsservers, self.dns_blacklist, self.dns_timeout, self.dns_trust_servers)
+            dns_resolve = dns_resolve_over_tcp if qname.endswith(self.dns_tcpover) else dns_resolve_over_udp
+            kwargs = {'blacklist': self.dns_blacklist, 'turstservers': self.dns_trust_servers}
+            record = dns_resolve(qname, dnsservers, self.dns_timeout, **kwargs)
         except socket.gaierror as e:
             logging.warning('resolve %r failed: %r', qname, e)
             record = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
