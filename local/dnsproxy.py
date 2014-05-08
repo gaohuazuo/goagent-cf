@@ -152,7 +152,6 @@ def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout, turstservers=())
                         record = dnslib.DNSRecord.parse(reply_data)
                         rtypes = (1, 28) if sock is sock_v6 else (1,)
                         iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
-                        ttl = max(x.ttl for x in record.rr) if record.rr else 600
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r dnsservers=%r record bad iplist=%r', qname, dnsservers, iplist)
                         elif record.header.rcode and not iplist and reply_server in turstservers:
@@ -271,7 +270,8 @@ class DNSServer(gevent.server.DatagramServer):
         except socket.gaierror as e:
             logging.warning('resolve %r failed: %r', qname, e)
             record = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
-        self.dns_cache.set((qname, qtype), record, 3600)
+        ttl = max(x.ttl for x in record.rr) if record.rr else 600
+        self.dns_cache.set((qname, qtype), record, ttl * 2)
         return self.sendto(data[:2] + record.pack()[2:], address)
 
 
