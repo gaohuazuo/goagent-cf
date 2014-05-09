@@ -22,6 +22,7 @@ import heapq
 import socket
 import select
 import struct
+import errno
 import thread
 import dnslib
 import Queue
@@ -243,11 +244,22 @@ class DNSServer(gevent.server.DatagramServer):
                             self.dns_trust_servers.add(dnsserver)
                     break
 
+    def do_read(self):
+        try:
+            return gevent.server.DatagramServer.do_read(self)
+        except socket.error as e:
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+
     def get_reply_record(self, data):
         request = dnslib.DNSRecord.parse(data)
         qname = str(request.q.qname).lower()
         qtype = request.q.qtype
         dnsservers = self.dns_servers
+        if qname.endswith('.in-addr.arpa'):
+            ipaddr = '.'.join(reversed(qname[:-13].split('.')))
+            record = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, qr=1,aa=1,ra=1), a=dnslib.RR(qname, rdata=dnslib.A(ipaddr)))
+            return record
         if 'USERDNSDOMAIN' in os.environ:
             user_dnsdomain = '.' + os.environ['USERDNSDOMAIN'].lower()
             if qname.endswith(user_dnsdomain):
