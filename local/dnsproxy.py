@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # coding:utf-8
-# TODO: 1. sort reply rdata by ip latency
-#       3. reduce socket fd usage
-
 
 __version__ = '1.0'
 
@@ -246,34 +243,39 @@ class DNSServer(gevent.server.DatagramServer):
                             self.dns_trust_servers.add(dnsserver)
                     break
 
-    def handle(self, data, address):
-        logging.debug('receive from %r data=%r', address, data)
+    def get_reply_record(self, data):
         request = dnslib.DNSRecord.parse(data)
-        qname = str(request.q.qname)
+        qname = str(request.q.qname).lower()
         qtype = request.q.qtype
-        try:
-            record = self.dns_cache.get((qname, qtype))
-            return self.sendto(data[:2] + record.pack()[2:], address)
-        except KeyError:
-            record = None
-        is_local_hostname = '.' not in qname
+        dnsservers = self.dns_servers
         if 'USERDNSDOMAIN' in os.environ:
-            is_local_hostname = qname.lower().endswith('.' + os.environ['USERDNSDOMAIN'].lower())
-        if is_local_hostname and not self.dns_intranet_servers:
-            logging.warning('qname=%r is a plain hostname, need intranet dns server!!!', qname)
-            reply = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
-            self.sendto(reply.pack(), address)
-            return
-        dnsservers = self.dns_servers if not is_local_hostname else self.dns_intranet_servers
+            user_dnsdomain = '.' + os.environ['USERDNSDOMAIN'].lower()
+            if qname.endswith(user_dnsdomain):
+                qname = qname[:-len(user_dnsdomain)]
+                if '.' not in qname:
+                    if not self.dns_intranet_servers:
+                        logging.warning('qname=%r is a plain hostname, need intranet dns server!!!', qname)
+                        return dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
+                    qname += user_dnsdomain
+                    dnsservers = self.dns_intranet_servers
+        try:
+            return self.dns_cache.get((qname, qtype))
+        except KeyError:
+            pass
         try:
             dns_resolve = dns_resolve_over_tcp if qname.endswith(self.dns_tcpover) else dns_resolve_over_udp
             kwargs = {'blacklist': self.dns_blacklist, 'turstservers': self.dns_trust_servers}
             record = dns_resolve(qname, dnsservers, self.dns_timeout, **kwargs)
+            ttl = max(x.ttl for x in record.rr) if record.rr else 600
+            self.dns_cache.set((qname, qtype), record, ttl * 2)
+            return record
         except socket.gaierror as e:
             logging.warning('resolve %r failed: %r', qname, e)
-            record = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
-        ttl = max(x.ttl for x in record.rr) if record.rr else 600
-        self.dns_cache.set((qname, qtype), record, ttl * 2)
+            return dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
+
+    def handle(self, data, address):
+        logging.debug('receive from %r data=%r', address, data)
+        record = self.get_reply_record(data)
         return self.sendto(data[:2] + record.pack()[2:], address)
 
 
