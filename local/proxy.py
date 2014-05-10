@@ -2991,6 +2991,9 @@ def pre_start():
             any(dnsservers_ref.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in dnsservers_ref])
         AdvancedProxyHandler.dns_servers = common.HTTP_DNS
         AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
+    else:
+        AdvancedProxyHandler.dns_servers = common.HTTP_DNS or common.DNS_SERVERS
+        AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
     if not OpenSSL:
         logging.warning('python-openssl not found, please install it!')
     RangeFetch.threads = common.AUTORANGE_THREADS
