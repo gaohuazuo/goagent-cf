@@ -36,6 +36,10 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 #      Bo Tian           <dxmtb@163.com>
+#      Virgil            <hyln9@users.noreply.github.
+#      hub01             <miaojiabumiao@yeah.net>
+#      v3aqb             <sgzz.cj@gmail.com>
+#      Oling Cat         <olingcat@gmail.com>
 
 __version__ = '3.1.11'
 
