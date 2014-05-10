@@ -707,6 +707,119 @@ def extract_sni_name(packet):
                 return server_name
 
 
+class URLFetch(object):
+    """URLFetch for gae/php fetchservers"""
+    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
+
+    def __init__(self, fetchserver, create_http_request):
+        assert isinstance(fetchserver, basestring) and callable(create_http_request)
+        self.fetchserver = fetchserver
+        self.create_http_request = create_http_request
+
+    def fetch(self, method, url, headers, body, timeout, **kwargs):
+        if '.appspot.com/' in self.fetchserver:
+            return self.__gae_fetch(method, url, headers, body, timeout, **kwargs)
+        else:
+            return self.__php_fetch(method, url, headers, body, timeout, **kwargs)
+
+    def __gae_fetch(self, method, url, headers, body, timeout, **kwargs):
+        # deflate = lambda x:zlib.compress(x)[2:-4]
+        rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
+        if body:
+            if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
+                zbody = zlib.compress(body)[2:-4]
+                if len(zbody) < len(body):
+                    body = zbody
+                    headers['Content-Encoding'] = 'deflate'
+            headers['Content-Length'] = str(len(body))
+        # GAE donot allow set `Host` header
+        if 'Host' in headers:
+            del headers['Host']
+        metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
+        skip_headers = self.skip_headers
+        metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
+        # prepare GAE request
+        request_method = 'POST'
+        request_headers = {}
+        if common.GAE_OBFUSCATE:
+            if 'rc4' in common.GAE_OPTIONS:
+                request_headers['X-GOA-Options'] = 'rc4'
+                cookie = base64.b64encode(rc4crypt(zlib.compress(metadata)[2:-4], kwargs.get('password'))).strip()
+                body = rc4crypt(body, kwargs.get('password'))
+            else:
+                cookie = base64.b64encode(zlib.compress(metadata)[2:-4]).strip()
+            request_headers['Cookie'] = cookie
+            if body:
+                request_headers['Content-Length'] = str(len(body))
+            else:
+                request_method = 'GET'
+        else:
+            metadata = zlib.compress(metadata)[2:-4]
+            body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
+            if 'rc4' in common.GAE_OPTIONS:
+                request_headers['X-GOA-Options'] = 'rc4'
+                body = rc4crypt(body, kwargs.get('password'))
+            request_headers['Content-Length'] = str(len(body))
+        # post data
+        need_crlf = 0 if common.GAE_MODE == 'https' else 1
+        need_validate = common.GAE_VALIDATE
+        cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+        response = self.create_http_request(request_method, self.fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
+        response.app_status = response.status
+        response.app_type = 'gae'
+        response.app_options = response.getheader('X-GOA-Options', '')
+        if response.status != 200:
+            return response
+        data = response.read(4)
+        if len(data) < 4:
+            response.status = 502
+            response.fp = io.BytesIO(b'connection aborted. too short leadbyte data=' + data)
+            response.read = response.fp.read
+            return response
+        response.status, headers_length = struct.unpack('!hh', data)
+        data = response.read(headers_length)
+        if len(data) < headers_length:
+            response.status = 502
+            response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
+            response.read = response.fp.read
+            return response
+        if 'rc4' not in response.app_options:
+            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+        else:
+            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
+            if kwargs.get('password') and response.fp:
+                response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
+        return response
+
+    def __php_fetch(self, method, url, headers, body, timeout, **kwargs):
+        if body:
+            if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
+                zbody = zlib.compress(body)[2:-4]
+                if len(zbody) < len(body):
+                    body = zbody
+                    headers['Content-Encoding'] = 'deflate'
+            headers['Content-Length'] = str(len(body))
+        skip_headers = self.skip_headers
+        metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
+        metadata = zlib.compress(metadata)[2:-4]
+        app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
+        app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
+        fetchserver = '%s?%s' % (self.fetchserver, random.random())
+        crlf = 0
+        cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
+        response = self.create_http_request('POST', fetchserver, app_headers, app_body, timeout, crlf=crlf, cache_key=cache_key)
+        if not response:
+            raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
+        if response.status >= 400:
+            return response
+        response.app_status = response.status
+        response.app_type = 'php'
+        need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
+        if need_decrypt:
+            response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
+        return response
+
+
 class BaseProxyHandlerFilter(object):
     """base proxy handler filter"""
     def filter(self, handler):
@@ -882,7 +995,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return response
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
-        raise NotImplementedError
+        return URLFetch(fetchserver, self.create_http_request).fetch(method, url, headers, body, timeout, **kwargs)
 
     def handle_urlfetch_error(self, fetchserver, response):
         pass
@@ -2153,15 +2266,11 @@ class AutoRangeFilter(BaseProxyHandlerFilter):
 class GAEFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
+        """https://developers.google.com/appengine/docs/python/urlfetch/"""
         if handler.command == 'CONNECT':
-            # https://developers.google.com/appengine/docs/python/urlfetch/
             do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
             return [handler.STRIP, do_ssl_handshake, self if not common.URLRE_MAP else None]
-        elif handler.command in ('OPTIONS',):
-            # if common.PHP_ENABLE:
-            #     return PHPProxyHandler.handler_filters[-1].filter(handler)
-            return [handler.DIRECT, {}]
-        else:
+        elif handler.command in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             kwargs = {}
             if common.GAE_PASSWORD:
                 kwargs['password'] = common.GAE_PASSWORD
@@ -2169,6 +2278,12 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
                 kwargs['validate'] = 1
             fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
             return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
+        else:
+            if common.PHP_ENABLE:
+                return PHPProxyHandler.handler_filters[-1].filter(handler)
+            else:
+                logging.warning('"%s %s" not supported by GAE, please enable PHP mode!', handler.command, handler.host)
+                return [handler.DIRECT, {}]
 
 
 class GAEProxyHandler(AdvancedProxyHandler):
@@ -2187,75 +2302,6 @@ class GAEProxyHandler(AdvancedProxyHandler):
                 common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.appspot.com']
             if host not in self.dns_cache:
                 self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
-
-    def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
-        # deflate = lambda x:zlib.compress(x)[2:-4]
-        rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
-        if body:
-            if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-                zbody = zlib.compress(body)[2:-4]
-                if len(zbody) < len(body):
-                    body = zbody
-                    headers['Content-Encoding'] = 'deflate'
-            headers['Content-Length'] = str(len(body))
-        # GAE donot allow set `Host` header
-        if 'Host' in headers:
-            del headers['Host']
-        metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
-        skip_headers = self.skip_headers
-        metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
-        # prepare GAE request
-        request_method = 'POST'
-        request_headers = {}
-        if common.GAE_OBFUSCATE:
-            if 'rc4' in common.GAE_OPTIONS:
-                request_headers['X-GOA-Options'] = 'rc4'
-                cookie = base64.b64encode(rc4crypt(zlib.compress(metadata)[2:-4], kwargs.get('password'))).strip()
-                body = rc4crypt(body, kwargs.get('password'))
-            else:
-                cookie = base64.b64encode(zlib.compress(metadata)[2:-4]).strip()
-            request_headers['Cookie'] = cookie
-            if body:
-                request_headers['Content-Length'] = str(len(body))
-            else:
-                request_method = 'GET'
-        else:
-            metadata = zlib.compress(metadata)[2:-4]
-            body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
-            if 'rc4' in common.GAE_OPTIONS:
-                request_headers['X-GOA-Options'] = 'rc4'
-                body = rc4crypt(body, kwargs.get('password'))
-            request_headers['Content-Length'] = str(len(body))
-        # post data
-        need_crlf = 0 if common.GAE_MODE == 'https' else 1
-        need_validate = common.GAE_VALIDATE
-        cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
-        response.app_status = response.status
-        response.app_type = 'gae'
-        response.app_options = response.getheader('X-GOA-Options', '')
-        if response.status != 200:
-            return response
-        data = response.read(4)
-        if len(data) < 4:
-            response.status = 502
-            response.fp = io.BytesIO(b'connection aborted. too short leadbyte data=' + data)
-            response.read = response.fp.read
-            return response
-        response.status, headers_length = struct.unpack('!hh', data)
-        data = response.read(headers_length)
-        if len(data) < headers_length:
-            response.status = 502
-            response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
-            response.read = response.fp.read
-            return response
-        if 'rc4' not in response.app_options:
-            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
-        else:
-            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
-            if kwargs.get('password') and response.fp:
-                response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
-        return response
 
     def handle_urlfetch_error(self, fetchserver, response):
         gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
@@ -2303,35 +2349,6 @@ class PHPProxyHandler(AdvancedProxyHandler):
             self.dns_cache[fetchhost] = list(set(fetchhost_iplist))
             logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fetchhost_iplist)
         return True
-
-    def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
-        if body:
-            if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-                zbody = zlib.compress(body)[2:-4]
-                if len(zbody) < len(body):
-                    body = zbody
-                    headers['Content-Encoding'] = 'deflate'
-            headers['Content-Length'] = str(len(body))
-        skip_headers = self.skip_headers
-        metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
-        metadata = zlib.compress(metadata)[2:-4]
-        app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
-        app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
-        fetchserver += '?%s' % random.random()
-        crlf = 0
-        cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-        response = self.create_http_request('POST', fetchserver, app_headers, app_body, timeout, crlf=crlf, cache_key=cache_key)
-        if not response:
-            raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
-        if response.status >= 400:
-            return response
-        response.app_status = response.status
-        response.app_type = 'php'
-        need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
-        if need_decrypt:
-            response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
-        self.close_connection = 1
-        return response
 
 
 class ProxyChainMixin:
