@@ -718,9 +718,12 @@ class URLFetch(object):
 
     def fetch(self, method, url, headers, body, timeout, **kwargs):
         if '.appspot.com/' in self.fetchserver:
-            return self.__gae_fetch(method, url, headers, body, timeout, **kwargs)
+            response = self.__gae_fetch(method, url, headers, body, timeout, **kwargs)
+            response.app_header_parsed = True
         else:
-            return self.__php_fetch(method, url, headers, body, timeout, **kwargs)
+            response = self.__php_fetch(method, url, headers, body, timeout, **kwargs)
+            response.app_header_parsed = False
+        return response
 
     def __gae_fetch(self, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -766,7 +769,6 @@ class URLFetch(object):
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
         response = self.create_http_request(request_method, self.fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
-        response.app_type = 'gae'
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
             return response
@@ -813,7 +815,6 @@ class URLFetch(object):
         if response.status >= 400:
             return response
         response.app_status = response.status
-        response.app_type = 'php'
         need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
@@ -1234,7 +1235,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             if response.status == 206:
                 return RangeFetch(self, response, fetchservers, **kwargs).fetch()
-            if response.app_type == 'gae':
+            if response.app_header_parsed:
                 self.close_connection = not response.getheader('Content-Length')
                 self.send_response(response.status)
                 for key, value in response.getheaders():
