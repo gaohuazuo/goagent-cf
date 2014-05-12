@@ -209,7 +209,10 @@ def dns_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
     for dnsserver in dnsservers:
         thread.start_new_thread(do_resolve, (qname, dnsserver, timeout, queobj))
     for i in range(len(dnsservers)):
-        result = queobj.get()
+        try:
+            result = queobj.get(timeout)
+        except Queue.Empty:
+            raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
         if result and not isinstance(result, Exception):
             return result
         elif i == len(dnsservers) - 1:
