@@ -559,12 +559,14 @@ class ProxyUtil(object):
         return listen_ip
 
 
-def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout):
+def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/域名服务器缓存污染
+    http://zh.wikipedia.org/wiki/%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%BC%93%E5%AD%98%E6%B1%A1%E6%9F%93
     http://support.microsoft.com/kb/241352
     """
+    blacklist = kwargs.get('blacklist', ())
+    turstservers = kwargs.get('turstservers', ())
     query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if ':' not in x]
@@ -588,15 +590,21 @@ def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout):
                 while time.time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
-                        reply_data, _ = sock.recvfrom(512)
-                        reply = dnslib.DNSRecord.parse(reply_data)
+                        reply_data, (reply_server, _) = sock.recvfrom(512)
+                        record = dnslib.DNSRecord.parse(reply_data)
                         rtypes = (1, 28) if sock is sock_v6 else (1,)
-                        iplist = [str(x.rdata) for x in reply.rr if x.rtype in rtypes]
+                        iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
                         if any(x in blacklist for x in iplist):
-                            logging.warning('query qname=%r dnsservers=%r reply bad iplist=%r', qname, dnsservers, iplist)
+                            logging.warning('query qname=%r dnsservers=%r record bad iplist=%r', qname, dnsservers, iplist)
+                        elif record.header.rcode and not iplist and reply_server in turstservers:
+                            logging.info('query qname=%r trust reply_server=%r record rcode=%s', qname, reply_server, record.header.rcode)
+                            return record
+                        elif iplist:
+                            logging.debug('query qname=%r reply_server=%r record iplist=%s', qname, reply_server, iplist)
+                            return record
                         else:
-                            logging.debug('query qname=%r dnsservers=%r reply iplist=%s', qname, dnsservers, iplist)
-                            return iplist
+                            logging.debug('query qname=%r reply_server=%r record null iplist=%s', qname, reply_server, iplist)
+                            continue
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
         raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
@@ -605,8 +613,9 @@ def dns_resolve_over_udp(qname, dnsservers, blacklist, timeout):
             sock.close()
 
 
-def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
-    """tcp query over tcp"""
+def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
+    """dns query over tcp"""
+    blacklist = kwargs.get('blacklist', ())
     def do_resolve(qname, dnsserver, timeout, queobj):
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
         query_data = query.pack()
@@ -622,15 +631,15 @@ def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
             if len(reply_data_length) < 2:
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
             reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
-            reply = dnslib.DNSRecord.parse(reply_data)
+            record = dnslib.DNSRecord.parse(reply_data)
             rtypes = (1, 28) if sock_family is socket.AF_INET6 else (1,)
-            iplist = [str(x.rdata) for x in reply.rr if x.rtype in rtypes]
+            iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
             if any(x in blacklist for x in iplist):
-                logging.debug('query qname=%r dnsserver=%r reply bad iplist=%r', qname, dnsserver, iplist)
+                logging.debug('query qname=%r dnsserver=%r record bad iplist=%r', qname, dnsserver, iplist)
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
             else:
-                logging.debug('query qname=%r dnsserver=%r reply iplist=%s', qname, dnsserver, iplist)
-                queobj.put(iplist)
+                logging.debug('query qname=%r dnsserver=%r record iplist=%s', qname, dnsserver, iplist)
+                queobj.put(record)
         except socket.error as e:
             logging.debug('query qname=%r dnsserver=%r failed %r', qname, dnsserver, e)
             queobj.put(e)
@@ -643,13 +652,13 @@ def dns_resolve_over_tcp(qname, dnsservers, blacklist, timeout):
         thread.start_new_thread(do_resolve, (qname, dnsserver, timeout, queobj))
     for i in range(len(dnsservers)):
         try:
-            iplist = queobj.get(timeout)
+            result = queobj.get(timeout)
         except Queue.Empty:
             raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
-        if iplist and not isinstance(iplist, Exception):
-            return iplist
+        if result and not isinstance(result, Exception):
+            return result
         elif i == len(dnsservers) - 1:
-            logging.warning('dns_resolve_over_tcp %r with %s return %r', qname, dnsservers, iplist)
+            logging.warning('dnslib_resolve_over_tcp %r with %s return %r', qname, dnsservers, result)
     raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
 
 
@@ -1463,9 +1472,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 iplist = [hostname]
             elif self.dns_servers:
                 try:
-                    iplist = dns_resolve_over_udp(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
+                    iplist = dnslib_resolve_over_udp(hostname, self.dns_servers, timeout=2, blacklist=self.dns_blacklist)
                 except socket.gaierror:
-                    iplist = dns_resolve_over_tcp(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
+                    iplist = dnslib_resolve_over_tcp(hostname, self.dns_servers, timeout=2, blacklist=self.dns_blacklist)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
             self.dns_cache[hostname] = iplist
@@ -1932,7 +1941,7 @@ class Common(object):
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
             try:
-                iplist = dns_resolve_over_udp(host, dnsservers, self.DNS_BLACKLIST, timeout=2)
+                iplist = dnslib_resolve_over_udp(host, dnsservers, timeout=2, blacklist=self.DNS_BLACKLIST)
                 queue.put((host, dnsservers, iplist or []))
             except (socket.error, OSError) as e:
                 logging.warning('resolve remote host=%r failed: %s', host, e)
@@ -2196,11 +2205,11 @@ class HostsFilter(BaseProxyHandlerFilter):
             handler.dns_cache[host] = common.IPLIST_MAP[hostname]
         elif hostname == host and host.endswith(common.DNS_TCPOVER) and host not in handler.dns_cache:
             try:
-                iplist = dns_resolve_over_tcp(host, handler.dns_servers, handler.dns_blacklist, 4)
-                logging.info('HostsFilter dns_resolve_over_tcp %r with %r return %s', host, handler.dns_servers, iplist)
+                iplist = dnslib_resolve_over_tcp(host, handler.dns_servers, timeout=4, blacklist=handler.dns_blacklist)
+                logging.info('HostsFilter dnslib_resolve_over_tcp %r with %r return %s', host, handler.dns_servers, iplist)
                 handler.dns_cache[host] = iplist
             except socket.error as e:
-                logging.warning('HostsFilter dns_resolve_over_tcp %r with %r failed: %r', host, handler.dns_servers, e)
+                logging.warning('HostsFilter dnslib_resolve_over_tcp %r with %r failed: %r', host, handler.dns_servers, e)
         elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
             handler.dns_cache[host] = [hostname]
         elif hostname.startswith('file://'):
@@ -2234,7 +2243,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
             elif dnsservers:
-                iplist = dns_resolve_over_udp(hostname, dnsservers, [], 2)
+                iplist = dnslib_resolve_over_udp(hostname, dnsservers, timeout=2)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
             country_code = self.geoip.country_code_by_addr(iplist[0])
