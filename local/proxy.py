@@ -1821,6 +1821,18 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             response.cache_sock = response.fp._sock
         return response
 
+    def handle_urlfetch_response_close(self, fetchserver, response):
+        cache_sock = getattr(response, 'cache_sock', None)
+        if cache_sock:
+            if self.scheme == 'https':
+                self.ssl_connection_cache[response.cache_key].put((time.time(), cache_sock))
+            else:
+                cache_sock.close()
+            del response.cache_sock
+
+    def handle_urlfetch_error(self, fetchserver, response):
+        pass
+
 
 class Common(object):
     """Global Config Object"""
@@ -2343,15 +2355,6 @@ class GAEProxyHandler(AdvancedProxyHandler):
             if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
-
-    def handle_urlfetch_response_close(self, fetchserver, response):
-        cache_sock = getattr(response, 'cache_sock', None)
-        if cache_sock:
-            if self.scheme == 'https':
-                self.ssl_connection_cache[response.cache_key].put((time.time(), cache_sock))
-            else:
-                cache_sock.close()
-            del response.cache_sock
 
 
 class PHPFetchFilter(BaseProxyHandlerFilter):
