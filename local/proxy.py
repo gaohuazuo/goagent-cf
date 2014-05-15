@@ -1816,8 +1816,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             return None
         response = httplib.HTTPResponse(sock, buffering=True)
         response.begin()
-        response.cache_key = cache_key
-        response.cache_sock = response.fp._sock
+        if cache_key:
+            response.cache_key = cache_key
+            response.cache_sock = response.fp._sock
         return response
 
 
