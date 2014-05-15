@@ -1025,6 +1025,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_urlfetch_error(self, fetchserver, response):
         pass
 
+    def handle_urlfetch_response_close(self, fetchserver, response):
+        pass
+
     def parse_header(self):
         if self.command == 'CONNECT':
             netloc = self.path
@@ -1273,6 +1276,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if data:
                     self.wfile.write(data)
                 if not data:
+                    self.handle_urlfetch_response_close(fetchserver, response)
                     response.close()
                     break
                 del data
@@ -1812,6 +1816,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             return None
         response = httplib.HTTPResponse(sock, buffering=True)
         response.begin()
+        response.cache_key = cache_key
+        response.cache_sock = response.fp._sock
         return response
 
 
@@ -2336,6 +2342,11 @@ class GAEProxyHandler(AdvancedProxyHandler):
             if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
+
+    def handle_urlfetch_response_close(self, fetchserver, response):
+        if self.scheme == 'https' and response.cache_key and response.cache_sock:
+            self.ssl_connection_cache[response.cache_key].put((time.time(), response.cache_sock))
+            del response.cache_sock
 
 
 class PHPFetchFilter(BaseProxyHandlerFilter):
