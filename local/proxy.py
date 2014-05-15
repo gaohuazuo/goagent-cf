@@ -2344,8 +2344,12 @@ class GAEProxyHandler(AdvancedProxyHandler):
                 logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
 
     def handle_urlfetch_response_close(self, fetchserver, response):
-        if self.scheme == 'https' and response.cache_key and response.cache_sock:
-            self.ssl_connection_cache[response.cache_key].put((time.time(), response.cache_sock))
+        cache_sock = getattr(response, 'cache_sock', None)
+        if cache_sock:
+            if self.scheme == 'https':
+                self.ssl_connection_cache[response.cache_key].put((time.time(), cache_sock))
+            else:
+                cache_sock.close()
             del response.cache_sock
 
 
