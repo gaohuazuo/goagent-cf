@@ -1472,6 +1472,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_keepalive = False
     max_window = 4
 
     def gethostbyname2(self, hostname):
@@ -1816,7 +1817,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             return None
         response = httplib.HTTPResponse(sock, buffering=True)
         response.begin()
-        if cache_key:
+        if self.ssl_connection_keepalive and scheme == 'https' and cache_key:
             response.cache_key = cache_key
             response.cache_sock = response.fp._sock
         return response
@@ -1865,8 +1866,9 @@ class Common(object):
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
         self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
-        self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
+        self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive') if self.CONFIG.has_option('gae', 'keepalive') else 0
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
+        self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_TRANSPORT = self.CONFIG.getint('gae', 'transport') if self.CONFIG.has_option('gae', 'transport') else 0
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
         self.GAE_REGIONS = set(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
@@ -3006,6 +3008,8 @@ def pre_start():
                 logging.warning("*NOTE*, Please set [gae]window=2")
     if GAEProxyHandler.max_window != common.GAE_WINDOW:
         GAEProxyHandler.max_window = common.GAE_WINDOW
+    if common.GAE_KEEPALIVE and common.GAE_MODE == 'https':
+        GAEProxyHandler.ssl_connection_keepalive = True
     if common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
