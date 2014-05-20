@@ -592,7 +592,7 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
                     for sock in ins:
                         reply_data, (reply_server, _) = sock.recvfrom(512)
                         record = dnslib.DNSRecord.parse(reply_data)
-                        rtypes = (1, 28) if sock is sock_v6 else (1,)
+                        rtypes = (1, 28, 255) if sock is sock_v6 else (1,)
                         iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r dnsservers=%r record bad iplist=%r', qname, dnsservers, iplist)
@@ -632,7 +632,7 @@ def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
             reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
             record = dnslib.DNSRecord.parse(reply_data)
-            rtypes = (1, 28) if sock_family is socket.AF_INET6 else (1,)
+            rtypes = (1, 28, 255) if sock_family is socket.AF_INET6 else (1,)
             iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
             if any(x in blacklist for x in iplist):
                 logging.debug('query qname=%r dnsserver=%r record bad iplist=%r', qname, dnsserver, iplist)
@@ -665,7 +665,8 @@ def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
 def dnslib_record2iplist(record):
     """convert dnslib.DNSRecord to iplist"""
     assert isinstance(record, dnslib.DNSRecord)
-    return [str(x.rdata) for x in record.rr if x.rtype in (1, 28)]
+    iplist = [x for x in (str(r.rdata) for r in record.rr) if re.match(r'^\d+\.\d+\.\d+\.\d+$', x) or ':' in x]
+    return iplist
 
 
 def get_dnsserver_list():
