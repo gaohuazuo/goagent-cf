@@ -55,6 +55,22 @@ def get_dnsserver_list():
         return []
 
 
+def parse_port(dnsserver):
+    if "#" in dnsserver:
+        server, port = dnsserver.split("#", 1)
+        try:
+            port = int(port)
+        except ValueError:
+            logging.warning("malformed port detected:", port)
+            port = 53
+
+    else:
+        server = dnsserver
+        port = 53
+
+    return server, port
+
+
 class ExpireCache(object):
     """ A dictionary-like object, supporting expire semantics."""
     def __init__(self, max_size=1024):
@@ -142,9 +158,9 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
         for _ in xrange(4):
             try:
                 for dnsserver in dns_v4_servers:
-                    sock_v4.sendto(query_data, (dnsserver, 53))
+                    sock_v4.sendto(query_data, parse_port(dnsserver))
                 for dnsserver in dns_v6_servers:
-                    sock_v6.sendto(query_data, (dnsserver, 53))
+                    sock_v6.sendto(query_data, parse_port(dnsserver))
                 while time.time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
@@ -182,7 +198,7 @@ def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
         rfile = None
         try:
             sock.settimeout(timeout or None)
-            sock.connect((dnsserver, 53))
+            sock.connect(parse_port(dnsserver))
             sock.send(struct.pack('>h', len(query_data)) + query_data)
             rfile = sock.makefile('r', 1024)
             reply_data_length = rfile.read(2)
@@ -243,7 +259,7 @@ class DNSServer(gevent.server.DatagramServer):
                 if os.path.isfile(filename):
                     geoip = pygeoip.GeoIP(filename)
                     for dnsserver in self.dns_servers:
-                        if ':' not in dnsserver and geoip.country_name_by_addr(dnsserver) not in ('China',):
+                        if ':' not in dnsserver and geoip.country_name_by_addr(parse_port(dnsserver)[0]) not in ('China',):
                             self.dns_trust_servers.add(dnsserver)
                     break
 
