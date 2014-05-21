@@ -559,6 +559,22 @@ class ProxyUtil(object):
         return listen_ip
 
 
+def parse_port(dnsserver):
+    if "#" in dnsserver:
+        server, port = dnsserver.split("#", 1)
+        try:
+            port = int(port)
+        except ValueError:
+            logging.warning("malformed port detected:", port)
+            port = 53
+
+    else:
+        server = dnsserver
+        port = 53
+
+    return server, port
+
+
 def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
@@ -584,9 +600,9 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
         for _ in xrange(4):
             try:
                 for dnsserver in dns_v4_servers:
-                    sock_v4.sendto(query_data, (dnsserver, 53))
+                    sock_v4.sendto(query_data, parse_port(dnsserver))
                 for dnsserver in dns_v6_servers:
-                    sock_v6.sendto(query_data, (dnsserver, 53))
+                    sock_v6.sendto(query_data, parse_port(dnsserver))
                 while time.time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
@@ -624,7 +640,7 @@ def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
         rfile = None
         try:
             sock.settimeout(timeout or None)
-            sock.connect((dnsserver, 53))
+            sock.connect(parse_port(dnsserver))
             sock.send(struct.pack('>h', len(query_data)) + query_data)
             rfile = sock.makefile('r', 1024)
             reply_data_length = rfile.read(2)
