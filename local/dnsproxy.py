@@ -55,20 +55,12 @@ def get_dnsserver_list():
         return []
 
 
-def parse_port(dnsserver):
-    if "#" in dnsserver:
-        server, port = dnsserver.split("#", 1)
-        try:
-            port = int(port)
-        except ValueError:
-            logging.warning("malformed port detected:", port)
-            port = 53
-
+def parse_hostport(host, default_port=80):
+    m = re.match(r'(.+)[:#](\d+)$', host)
+    if m:
+        return m.group(1).strip('[]'), int(m.group(2))
     else:
-        server = dnsserver
-        port = 53
-
-    return server, port
+        return host.strip('[]'), default_port
 
 
 class ExpireCache(object):
@@ -133,7 +125,7 @@ class ExpireCache(object):
             del v[key], ets[key]
 
 
-def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
+def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
     http://zh.wikipedia.org/wiki/%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%BC%93%E5%AD%98%E6%B1%A1%E6%9F%93
@@ -141,7 +133,8 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
     """
     blacklist = kwargs.get('blacklist', ())
     turstservers = kwargs.get('turstservers', ())
-    query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
+    if isinstance(query, basestring):
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if ':' not in x]
     dns_v6_servers = [x for x in dnsservers if ':' in x]
@@ -158,9 +151,9 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
         for _ in xrange(4):
             try:
                 for dnsserver in dns_v4_servers:
-                    sock_v4.sendto(query_data, parse_port(dnsserver))
+                    sock_v4.sendto(query_data, parse_hostport(dnsserver, 53))
                 for dnsserver in dns_v6_servers:
-                    sock_v6.sendto(query_data, parse_port(dnsserver))
+                    sock_v6.sendto(query_data, parse_hostport(dnsserver, 53))
                 while time.time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
@@ -169,53 +162,54 @@ def dnslib_resolve_over_udp(qname, dnsservers, timeout, **kwargs):
                         rtypes = (1, 28, 255) if sock is sock_v6 else (1,)
                         iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
                         if any(x in blacklist for x in iplist):
-                            logging.warning('query qname=%r dnsservers=%r record bad iplist=%r', qname, dnsservers, iplist)
+                            logging.warning('query=%r dnsservers=%r record bad iplist=%r', query, dnsservers, iplist)
                         elif record.header.rcode and not iplist and reply_server in turstservers:
-                            logging.info('query qname=%r trust reply_server=%r record rcode=%s', qname, reply_server, record.header.rcode)
+                            logging.info('query=%r trust reply_server=%r record rcode=%s', query, reply_server, record.header.rcode)
                             return record
                         elif iplist:
-                            logging.debug('query qname=%r reply_server=%r record iplist=%s', qname, reply_server, iplist)
+                            logging.debug('query=%r reply_server=%r record iplist=%s', query, reply_server, iplist)
                             return record
                         else:
-                            logging.debug('query qname=%r reply_server=%r record null iplist=%s', qname, reply_server, iplist)
+                            logging.debug('query=%r reply_server=%r record null iplist=%s', query, reply_server, iplist)
                             continue
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
-        raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
+        raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
     finally:
         for sock in socks:
             sock.close()
 
 
-def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
+def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
     """dns query over tcp"""
     blacklist = kwargs.get('blacklist', ())
-    def do_resolve(qname, dnsserver, timeout, queobj):
-        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
+    def do_resolve(query, dnsserver, timeout, queobj):
+        if isinstance(query, basestring):
+            query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
         query_data = query.pack()
         sock_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
         sock = socket.socket(sock_family)
         rfile = None
         try:
             sock.settimeout(timeout or None)
-            sock.connect(parse_port(dnsserver))
+            sock.connect(parse_hostport(dnsserver, 53))
             sock.send(struct.pack('>h', len(query_data)) + query_data)
             rfile = sock.makefile('r', 1024)
             reply_data_length = rfile.read(2)
             if len(reply_data_length) < 2:
-                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
+                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
             reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
             record = dnslib.DNSRecord.parse(reply_data)
             rtypes = (1, 28, 255) if sock_family is socket.AF_INET6 else (1,)
             iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
             if any(x in blacklist for x in iplist):
-                logging.debug('query qname=%r dnsserver=%r record bad iplist=%r', qname, dnsserver, iplist)
-                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsserver))
+                logging.debug('query=%r dnsserver=%r record bad iplist=%r', query, dnsserver, iplist)
+                raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
             else:
-                logging.debug('query qname=%r dnsserver=%r record iplist=%s', qname, dnsserver, iplist)
+                logging.debug('query=%r dnsserver=%r record iplist=%s', query, dnsserver, iplist)
                 queobj.put(record)
         except socket.error as e:
-            logging.debug('query qname=%r dnsserver=%r failed %r', qname, dnsserver, e)
+            logging.debug('query=%r dnsserver=%r failed %r', query, dnsserver, e)
             queobj.put(e)
         finally:
             if rfile:
@@ -223,18 +217,17 @@ def dnslib_resolve_over_tcp(qname, dnsservers, timeout, **kwargs):
             sock.close()
     queobj = Queue.Queue()
     for dnsserver in dnsservers:
-        thread.start_new_thread(do_resolve, (qname, dnsserver, timeout, queobj))
+        thread.start_new_thread(do_resolve, (query, dnsserver, timeout, queobj))
     for i in range(len(dnsservers)):
         try:
             result = queobj.get(timeout)
         except Queue.Empty:
-            raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
+            raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
         if result and not isinstance(result, Exception):
             return result
         elif i == len(dnsservers) - 1:
-            logging.warning('dnslib_resolve_over_tcp %r with %s return %r', qname, dnsservers, result)
-    raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (qname, dnsservers))
-
+            logging.warning('dnslib_resolve_over_tcp %r with %s return %r', query, dnsservers, result)
+    raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
 
 
 class DNSServer(gevent.server.DatagramServer):
@@ -259,7 +252,7 @@ class DNSServer(gevent.server.DatagramServer):
                 if os.path.isfile(filename):
                     geoip = pygeoip.GeoIP(filename)
                     for dnsserver in self.dns_servers:
-                        if ':' not in dnsserver and geoip.country_name_by_addr(parse_port(dnsserver)[0]) not in ('China',):
+                        if ':' not in dnsserver and geoip.country_name_by_addr(parse_hostport(dnsserver, 53)[0]) not in ('China',):
                             self.dns_trust_servers.add(dnsserver)
                     break
 
@@ -296,7 +289,7 @@ class DNSServer(gevent.server.DatagramServer):
         try:
             dns_resolve = dnslib_resolve_over_tcp if qname.endswith(self.dns_tcpover) else dnslib_resolve_over_udp
             kwargs = {'blacklist': self.dns_blacklist, 'turstservers': self.dns_trust_servers}
-            record = dns_resolve(qname, dnsservers, self.dns_timeout, **kwargs)
+            record = dns_resolve(request, dnsservers, self.dns_timeout, **kwargs)
             ttl = max(x.ttl for x in record.rr) if record.rr else 600
             self.dns_cache.set((qname, qtype), record, ttl * 2)
             return record
