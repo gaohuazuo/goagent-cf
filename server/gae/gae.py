@@ -30,20 +30,29 @@ URLFETCH_TIMEOUT = 60
 def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
     <html><head>
-    <meta http-equiv="content-type" content="text/html;charset=utf-8" >
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="content-type" content="text/html;charset=utf-8">
     <title>$title</title>
     <style><!--
-    body {font-family:arial,sans-serif;width:80%;margin:0 auto;border:1px solid #07c;color:#333;}
-    strong {background:#07c;color:#fefefe;padding:3px;text-align:center;display:block;}
-    h1 {padding:0 1em;}
-    .detail {background:#eee;padding:5px;font-family:monospace;}
+    body {font-family: arial,sans-serif}
+    div.nav {margin-top: 1ex}
+    div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+    span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+    div.nav A,span.big {font-size: 12pt; color: #0000cc}
+    div.nav A {font-size: 10pt; color: black}
+    A.l:link {color: #6f6f6f}
+    A.u:link {color: green}
     //--></style>
     </head>
-    <body>
-    <strong>Message from GoAgent</strong>
-    <h1>$banner</h1>
-    <blockquote class="detail">$detail</blockquote>
+    <body text=#000000 bgcolor=#ffffff>
+    <table border=0 cellpadding=2 cellspacing=0 width=100%>
+    <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message From FetchServer</b></td></tr>
+    <tr><td> </td></tr></table>
+    <blockquote>
+    <H1>$banner</H1>
+    $detail
+    <p>
+    </blockquote>
+    <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
     </body></html>
     '''
     return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
