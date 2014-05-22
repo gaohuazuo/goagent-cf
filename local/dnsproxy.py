@@ -41,12 +41,9 @@ def get_dnsserver_list():
         DNS_CONFIG_DNS_SERVER_LIST = 6
         buf = ctypes.create_string_buffer(2048)
         ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
-        ips = struct.unpack('I', buf[0:4])[0]
-        out = []
-        for i in xrange(ips):
-            start = (i+1) * 4
-            out.append(socket.inet_ntoa(buf[start:start+4]))
-        return out
+        ipcount = struct.unpack('I', buf[0:4])[0]
+        iplist = [socket.inet_ntoa(buf[i:i+4]) for i in xrange(4, ipcount*4+4, 4)]
+        return iplist
     elif os.path.isfile('/etc/resolv.conf'):
         with open('/etc/resolv.conf', 'rb') as fp:
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())

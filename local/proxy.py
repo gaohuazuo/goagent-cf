@@ -573,10 +573,12 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
     http://zh.wikipedia.org/wiki/%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%BC%93%E5%AD%98%E6%B1%A1%E6%9F%93
     http://support.microsoft.com/kb/241352
     """
-    blacklist = kwargs.get('blacklist', ())
-    turstservers = kwargs.get('turstservers', ())
+    if not isinstance(query, (basestring, dnslib.DNSRecord)):
+        raise TypeError('query argument requires string/DNSRecord')
     if isinstance(query, basestring):
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
+    blacklist = kwargs.get('blacklist', ())
+    turstservers = kwargs.get('turstservers', ())
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if ':' not in x]
     dns_v6_servers = [x for x in dnsservers if ':' in x]
@@ -624,10 +626,12 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
 
 def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
     """dns query over tcp"""
+    if not isinstance(query, (basestring, dnslib.DNSRecord)):
+        raise TypeError('query argument requires string/DNSRecord')
+    if isinstance(query, basestring):
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
     blacklist = kwargs.get('blacklist', ())
     def do_resolve(query, dnsserver, timeout, queobj):
-        if isinstance(query, basestring):
-            query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
         query_data = query.pack()
         sock_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
         sock = socket.socket(sock_family)
@@ -685,12 +689,9 @@ def get_dnsserver_list():
         DNS_CONFIG_DNS_SERVER_LIST = 6
         buf = ctypes.create_string_buffer(2048)
         ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
-        ips = struct.unpack('I', buf[0:4])[0]
-        out = []
-        for i in xrange(ips):
-            start = (i+1) * 4
-            out.append(socket.inet_ntoa(buf[start:start+4]))
-        return out
+        ipcount = struct.unpack('I', buf[0:4])[0]
+        iplist = [socket.inet_ntoa(buf[i:i+4]) for i in xrange(4, ipcount*4+4, 4)]
+        return iplist
     elif os.path.isfile('/etc/resolv.conf'):
         with open('/etc/resolv.conf', 'rb') as fp:
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
