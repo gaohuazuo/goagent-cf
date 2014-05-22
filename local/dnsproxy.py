@@ -128,10 +128,12 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
     http://zh.wikipedia.org/wiki/%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%BC%93%E5%AD%98%E6%B1%A1%E6%9F%93
     http://support.microsoft.com/kb/241352
     """
-    blacklist = kwargs.get('blacklist', ())
-    turstservers = kwargs.get('turstservers', ())
+    if not isinstance(query, (basestring, dnslib.DNSRecord)):
+        raise TypeError('query argument requires string/DNSRecord')
     if isinstance(query, basestring):
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
+    blacklist = kwargs.get('blacklist', ())
+    turstservers = kwargs.get('turstservers', ())
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if ':' not in x]
     dns_v6_servers = [x for x in dnsservers if ':' in x]
@@ -156,8 +158,7 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
                     for sock in ins:
                         reply_data, (reply_server, _) = sock.recvfrom(512)
                         record = dnslib.DNSRecord.parse(reply_data)
-                        rtypes = (1, 28, 255) if sock is sock_v6 else (1,)
-                        iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
+                        iplist = [str(x.rdata) for x in record.rr if x.rtype in (1, 28, 255)]
                         if any(x in blacklist for x in iplist):
                             logging.warning('query=%r dnsservers=%r record bad iplist=%r', query, dnsservers, iplist)
                         elif record.header.rcode and not iplist and reply_server in turstservers:
@@ -179,10 +180,12 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
 
 def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
     """dns query over tcp"""
+    if not isinstance(query, (basestring, dnslib.DNSRecord)):
+        raise TypeError('query argument requires string/DNSRecord')
+    if isinstance(query, basestring):
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
     blacklist = kwargs.get('blacklist', ())
     def do_resolve(query, dnsserver, timeout, queobj):
-        if isinstance(query, basestring):
-            query = dnslib.DNSRecord(q=dnslib.DNSQuestion(query))
         query_data = query.pack()
         sock_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
         sock = socket.socket(sock_family)
@@ -197,8 +200,7 @@ def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
             reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
             record = dnslib.DNSRecord.parse(reply_data)
-            rtypes = (1, 28, 255) if sock_family is socket.AF_INET6 else (1,)
-            iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
+            iplist = [str(x.rdata) for x in record.rr if x.rtype in (1, 28, 255)]
             if any(x in blacklist for x in iplist):
                 logging.debug('query=%r dnsserver=%r record bad iplist=%r', query, dnsserver, iplist)
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
