@@ -603,8 +603,7 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
                     for sock in ins:
                         reply_data, (reply_server, _) = sock.recvfrom(512)
                         record = dnslib.DNSRecord.parse(reply_data)
-                        rtypes = (1, 28, 255) if sock is sock_v6 else (1,)
-                        iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
+                        iplist = [str(x.rdata) for x in record.rr if x.rtype in (1, 28, 255)]
                         if any(x in blacklist for x in iplist):
                             logging.warning('query=%r dnsservers=%r record bad iplist=%r', query, dnsservers, iplist)
                         elif record.header.rcode and not iplist and reply_server in turstservers:
@@ -646,8 +645,7 @@ def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
             reply_data = rfile.read(struct.unpack('>h', reply_data_length)[0])
             record = dnslib.DNSRecord.parse(reply_data)
-            rtypes = (1, 28, 255) if sock_family is socket.AF_INET6 else (1,)
-            iplist = [str(x.rdata) for x in record.rr if x.rtype in rtypes]
+            iplist = [str(x.rdata) for x in record.rr if x.rtype in (1, 28, 255)]
             if any(x in blacklist for x in iplist):
                 logging.debug('query=%r dnsserver=%r record bad iplist=%r', query, dnsserver, iplist)
                 raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsserver))
