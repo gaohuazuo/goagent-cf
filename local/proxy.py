@@ -1531,7 +1531,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # send client hello and peek server hello
                 if client_hello:
                     sock.sendall(client_hello)
-                    if isinstance(sock, gevent.socket.socket):
+                    if gevent and isinstance(sock, gevent.socket.socket):
                         sock.data = data = sock.recv(4096)
                     else:
                         data = sock.recv(4096, socket.MSG_PEEK)
