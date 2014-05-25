@@ -3072,7 +3072,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     pre_start()
     CertUtil.check_ca()
-    sys.stdout.write(common.info())
+    sys.stderr.write(common.info())
 
     uvent_enabled = 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop)
 
