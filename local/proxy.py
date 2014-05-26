@@ -89,6 +89,7 @@ import SocketServer
 import ConfigParser
 import BaseHTTPServer
 import httplib
+import urllib
 import urllib2
 import urlparse
 try:
@@ -2902,14 +2903,52 @@ class PacFileFilter(BaseProxyHandlerFilter):
 
 class StaticFileFilter(BaseProxyHandlerFilter):
     """static file filter"""
+    index_file = 'index.html'
+
+    def format_index_html(self, dirname):
+        INDEX_TEMPLATE = u'''
+        <html>
+        <title>Directory listing for $dirname</title>
+        <body>
+        <h2>Directory listing for $dirname</h2>
+        <hr>
+        <ul>
+        $html
+        </ul>
+        <hr>
+        </body></html>
+        '''
+        html = ''
+        if not isinstance(dirname, unicode):
+            dirname = dirname.decode(sys.getfilesystemencoding())
+        for name in os.listdir(dirname):
+            fullname = os.path.join(dirname, name)
+            suffix = u'/' if os.path.isdir(fullname) else u''
+            html += u'<li><a href="%s%s">%s%s</a>\r\n' % (name, suffix, name, suffix)
+        return string.Template(INDEX_TEMPLATE).substitute(dirname=dirname, html=html)
+
     def filter(self, handler):
         path = urlparse.urlsplit(handler.path).path
-        if handler.command == 'GET' and path.startswith('/'):
-            filename = '.' + path
-            if os.path.isfile(filename):
-                with open(filename, 'rb') as fp:
+        if path.startswith('/'):
+            path = urllib.unquote_plus(path.lstrip('/') or '.').decode('utf8')
+            if os.path.isdir(path):
+                index_file = os.path.join(path, self.index_file)
+                if not os.path.isfile(index_file):
+                    content = self.format_index_html(path).encode('UTF-8')
+                    headers = {'Content-Type': 'text/html; charset=utf-8', 'Connection': 'close'}
+                    return [handler.MOCK, 200, headers, content]
+                else:
+                    path = index_file
+            if os.path.isfile(path):
+                content_type = 'application/octet-stream'
+                try:
+                    import mimetypes
+                    content_type = mimetypes.types_map.get(os.path.splitext(path)[1])
+                except StandardError as e:
+                    logging.error('import mimetypes failed: %r', e)
+                with open(path, 'rb') as fp:
                     content = fp.read()
-                    headers = {'Content-Type': 'application/octet-stream', 'Connection': 'close'}
+                    headers = {'Connection': 'close', 'Content-Type': content_type}
                     return [handler.MOCK, 200, headers, content]
 
 
