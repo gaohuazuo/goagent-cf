@@ -912,7 +912,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
     max_timeout = 16
-    connect_timeout = 8
+    connect_timeout = 4
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
     sticky_filter = None
@@ -1522,7 +1522,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # disable nagle algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
-                sock.settimeout(timeout or self.connect_timeout)
+                sock.settimeout(min(self.connect_timeout, timeout))
                 # start connection time record
                 start_time = time.time()
                 # TCP connect
@@ -1541,6 +1541,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         raise socket.timeout('timed out')
                     # record TCP connection time with client hello
                     self.tcp_connection_time_with_clienthello[ipaddr] = time.time() - start_time
+                # set timeout
+                sock.settimeout(timeout)
                 # put tcp socket object to output queobj
                 queobj.put(sock)
             except (socket.error, OSError) as e:
@@ -1617,13 +1619,13 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
-                sock.settimeout(timeout or self.connect_timeout)
+                sock.settimeout(min(self.connect_timeout, timeout))
                 # pick up the certificate
                 if not validate:
                     ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, do_handshake_on_connect=False)
                 else:
                     ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cacert.pem'), do_handshake_on_connect=False)
-                ssl_sock.settimeout(timeout or self.connect_timeout)
+                ssl_sock.settimeout(min(self.connect_timeout, timeout))
                 # start connection time record
                 start_time = time.time()
                 # TCP connect
@@ -1645,6 +1647,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     orgname = next((v for ((k, v),) in cert['subject'] if k == 'organizationName'))
                     if not orgname.lower().startswith('google '):
                         raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (hostname, orgname))
+                # set timeout
+                ssl_sock.settimeout(timeout)
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except (socket.error, ssl.SSLError, OSError) as e:
