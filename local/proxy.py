@@ -41,7 +41,7 @@
 #      v3aqb             <sgzz.cj@gmail.com>
 #      Oling Cat         <olingcat@gmail.com>
 
-__version__ = '3.1.12'
+__version__ = '3.1.13'
 
 import sys
 import os
@@ -1999,12 +1999,13 @@ class Common(object):
 
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
-            try:
-                iplist = dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=2, blacklist=self.DNS_BLACKLIST))
-                queue.put((host, dnsservers, iplist or []))
-            except (socket.error, OSError) as e:
-                logging.warning('resolve remote host=%r failed: %s', host, e)
-                queue.put((host, dnsservers, []))
+            iplist = []
+            for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
+                try:
+                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=2, blacklist=self.DNS_BLACKLIST))
+                except (socket.error, OSError) as e:
+                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
+            queue.put((host, dnsservers, iplist))
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
         google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
