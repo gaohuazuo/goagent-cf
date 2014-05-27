@@ -1027,7 +1027,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         ConnectionType = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
         connection = ConnectionType(netloc, timeout=timeout)
         connection.request(method, path, body=body, headers=headers)
-        response = connection.getresponse(buffering=True)
+        response = connection.getresponse()
         return response
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
@@ -1094,7 +1094,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def MOCK(self, status, headers, content):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
-        headers = {k.title(): v for k, v in headers.items()}
+        headers = dict((k.title(), v) for k, v in headers.items())
         if 'Transfer-Encoding' in headers:
             del headers['Transfer-Encoding']
         if 'Content-Length' not in headers:
@@ -1197,13 +1197,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             url = self.path
         else:
             url = 'http://%s%s' % (self.headers['Host'], self.path)
-        headers = {k.title(): v for k, v in self.headers.items()}
+        headers = dict((k.title(), v) for k, v in self.headers.items())
         body = self.body
         response = None
         try:
             response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
             logging.info('%s "DIRECT %s %s %s" %s %s', self.address_string(), self.command, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
-            response_headers = {k.title(): v for k, v in response.getheaders()}
+            response_headers = dict((k.title(), v) for k, v in response.getheaders())
             self.send_response(response.status)
             for key, value in response.getheaders():
                 self.send_header(key, value)
@@ -1242,7 +1242,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             url = self.path
         else:
             raise ValueError('URLFETCH %r is not a valid url' % self.path)
-        headers = {k.title(): v for k, v in self.headers.items()}
+        headers = dict((k.title(), v) for k, v in self.headers.items())
         body = self.body
         response = None
         errors = []
@@ -1818,7 +1818,12 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         response = None
         try:
             while crlf_counter:
-                response = httplib.HTTPResponse(sock, buffering=False)
+                if sys.version[:3] == '2.7':
+                    response = httplib.HTTPResponse(sock, buffering=False)
+                else:
+                    response = httplib.HTTPResponse(sock)
+                    response.fp.close()
+                    response.fp = sock.makefile('rb', 0)
                 response.begin()
                 response.read()
                 response.close()
@@ -1832,7 +1837,12 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             if sock:
                 sock.close()
             return None
-        response = httplib.HTTPResponse(sock, buffering=True)
+        if sys.version[:3] == '2.7':
+            response = httplib.HTTPResponse(sock, buffering=True)
+        else:
+            response = httplib.HTTPResponse(sock)
+            response.fp.close()
+            response.fp = sock.makefile('rb')
         response.begin()
         if self.ssl_connection_keepalive and scheme == 'https' and cache_key:
             response.cache_key = cache_key
@@ -2432,7 +2442,9 @@ class ProxyChainMixin:
             request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (common.PROXY_USERNAME, common.PROXY_PASSWROD)).encode()).decode().strip()
         request_data += '\r\n'
         sock.sendall(request_data)
-        response = httplib.HTTPResponse(sock, buffering=False)
+        response = httplib.HTTPResponse(sock)
+        response.fp.close()
+        response.fp = sock.makefile('rb', 0)
         response.begin()
         if response.status >= 400:
             raise httplib.BadStatusLine('%s %s %s' % (response.version, response.status, response.reason))
