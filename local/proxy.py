@@ -2003,7 +2003,7 @@ class Common(object):
             iplist = []
             for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
                 try:
-                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=2, blacklist=self.DNS_BLACKLIST))
+                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
                 except (socket.error, OSError) as e:
                     logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
             queue.put((host, dnsservers, iplist))
@@ -2021,14 +2021,14 @@ class Common(object):
                     thread.start_new_thread(do_resolve, (host, [dnsserver], result_queue))
             for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
                 try:
-                    host, dnsservers, iplist = result_queue.get(timeout=5)
+                    host, dnsservers, iplist = result_queue.get(timeout=10)
                     resolved_iplist += iplist or []
                     logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
                 except Queue.Empty:
                     logging.warn('resolve remote timeout, try resolve local')
                     resolved_iplist += sum([socket.gethostbyname_ex(x)[-1] for x in need_resolve_remote], [])
                     break
-            if name.startswith('google_') and name not in ('google_cn', 'google_hk'):
+            if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
                 resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
             else:
