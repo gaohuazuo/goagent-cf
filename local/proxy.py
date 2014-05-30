@@ -1649,7 +1649,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
-                server_hostname = b'www.google.com' if hostname.endswith('.appspot.com') else None
+                server_hostname = b'mail.google.com' if cache_key.startswith('google_') or hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
                 ssl_sock.set_connect_state()
                 if server_hostname:
@@ -1720,7 +1720,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             addrs = addresses[:window] + random.sample(addresses, window)
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
-                thread.start_new_thread(create_connection, (addr, timeout, queobj))
+                thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 sock = queobj.get()
                 if not isinstance(sock, Exception):
