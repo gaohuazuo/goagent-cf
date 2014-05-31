@@ -41,7 +41,7 @@
 #      v3aqb             <sgzz.cj@gmail.com>
 #      Oling Cat         <olingcat@gmail.com>
 
-__version__ = '3.1.15'
+__version__ = '3.1.16'
 
 import sys
 import os
@@ -1977,7 +1977,10 @@ class Common(object):
             iplist = []
             for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
                 try:
-                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
+                    if "<local>" in dnsservers:
+                        iplist += socket.gethostbyname_ex(host)[-1]
+                    else:
+                        iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
                 except (socket.error, OSError) as e:
                     logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
             queue.put((host, dnsservers, iplist))
@@ -1993,7 +1996,8 @@ class Common(object):
                 for dnsserver in self.DNS_SERVERS:
                     logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
                     thread.start_new_thread(do_resolve, (host, [dnsserver], result_queue))
-            for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
+                    thread.start_new_thread(do_resolve, (host, ["<local>"], result_queue))
+            for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote) * 2):
                 try:
                     host, dnsservers, iplist = result_queue.get(timeout=10)
                     resolved_iplist += iplist or []
