@@ -884,7 +884,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     scheme = 'http'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     bufsize = 256 * 1024
-    max_timeout = 16
+    max_timeout = 4
     connect_timeout = 4
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
