@@ -1909,10 +1909,10 @@ class Common(object):
 
         self.HTTP_WITHGAE = set(self.CONFIG.get(http_section, 'withgae').split('|'))
         self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
-        self.HTTP_FORCEHTTPS = tuple(self.CONFIG.get(http_section, 'forcehttps').split('|'))
-        self.HTTP_NOFORCEHTTPS = set(self.CONFIG.get(http_section, 'noforcehttps').split('|'))
-        self.HTTP_FAKEHTTPS = tuple(self.CONFIG.get(http_section, 'fakehttps').split('|'))
-        self.HTTP_NOFAKEHTTPS = set(self.CONFIG.get(http_section, 'nofakehttps').split('|'))
+        self.HTTP_FORCEHTTPS = tuple(self.CONFIG.get(http_section, 'forcehttps').split('|')) if self.CONFIG.get(http_section, 'forcehttps').strip() else tuple()
+        self.HTTP_NOFORCEHTTPS = set(self.CONFIG.get(http_section, 'noforcehttps').split('|')) if self.CONFIG.get(http_section, 'noforcehttps').strip() else set()
+        self.HTTP_FAKEHTTPS = tuple(self.CONFIG.get(http_section, 'fakehttps').split('|')) if self.CONFIG.get(http_section, 'fakehttps').strip() else tuple()
+        self.HTTP_NOFAKEHTTPS = set(self.CONFIG.get(http_section, 'nofakehttps').split('|')) if self.CONFIG.get(http_section, 'nofakehttps').strip() else set()
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
@@ -1971,7 +1971,7 @@ class Common(object):
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
         self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
         self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
-        self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|'))
+        self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|')) if self.CONFIG.get('dns', 'tcpover').strip() else tuple()
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
