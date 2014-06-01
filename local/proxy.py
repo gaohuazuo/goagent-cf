@@ -575,7 +575,8 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
                 while time.time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
-                        reply_data, (reply_server, _) = sock.recvfrom(512)
+                        reply_data, reply_address = sock.recvfrom(512)
+                        reply_server = reply_address[0]
                         record = dnslib.DNSRecord.parse(reply_data)
                         iplist = [str(x.rdata) for x in record.rr if x.rtype in (1, 28, 255)]
                         if any(x in blacklist for x in iplist):
