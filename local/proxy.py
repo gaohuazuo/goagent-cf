@@ -1904,8 +1904,10 @@ class Common(object):
 
         self.HTTP_WITHGAE = set(self.CONFIG.get(http_section, 'withgae').split('|'))
         self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
-        self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
-        self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
+        self.HTTP_FORCEHTTPS = tuple(self.CONFIG.get(http_section, 'forcehttps').split('|'))
+        self.HTTP_NOFORCEHTTPS = set(self.CONFIG.get(http_section, 'noforcehttps').split('|'))
+        self.HTTP_FAKEHTTPS = tuple(self.CONFIG.get(http_section, 'fakehttps').split('|'))
+        self.HTTP_NOFAKEHTTPS = set(self.CONFIG.get(http_section, 'nofakehttps').split('|'))
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
@@ -2185,16 +2187,17 @@ class WithGAEFilter(BaseProxyHandlerFilter):
 class ForceHttpsFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
-        if handler.command != 'CONNECT' and handler.host in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
-            logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-            headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
-            return [handler.MOCK, 301, headers, '']
+        if handler.command != 'CONNECT' and handler.host.endswith(common.HTTP_FORCEHTTPS) and handler.host not in common.HTTP_NOFORCEHTTPS:
+            if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
+                logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
+                headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
+                return [handler.MOCK, 301, headers, '']
 
 
 class FakeHttpsFilter(BaseProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
-        if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
+        if handler.command == 'CONNECT' and handler.host.endswith(common.HTTP_FAKEHTTPS) and handler.host not in common.HTTP_NOFAKEHTTPS:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
             return [handler.STRIP, True, None]
 
