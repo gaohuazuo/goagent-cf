@@ -1883,6 +1883,7 @@ class Common(object):
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
         self.GAE_REGIONS = set(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
         self.GAE_SSLVERSION = self.CONFIG.get('gae', 'sslversion')
+        self.GAE_PAGESPEED = self.CONFIG.getint('gae', 'pagespeed') if self.CONFIG.has_option('gae', 'pagespeed') else 0
 
         if self.GAE_PROFILE == 'auto':
             try:
@@ -2341,7 +2342,10 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
                 kwargs['password'] = common.GAE_PASSWORD
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
-            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
+            if not common.GAE_PAGESPEED:
+                fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
+            else:
+                fetchservers = ['%s://1-ps.googleusercontent.com/h/%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
             return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
         else:
             if common.PHP_ENABLE:
