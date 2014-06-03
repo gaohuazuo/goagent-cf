@@ -1659,7 +1659,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 server_hostname = b'mail.google.com' if cache_key.startswith('google_') or hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
                 ssl_sock.set_connect_state()
-                if server_hostname:
+                if server_hostname and hasattr(ssl_sock, 'set_tlsext_host_name'):
                     ssl_sock.set_tlsext_host_name(server_hostname)
                 # start connection time record
                 start_time = time.time()
