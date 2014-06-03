@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.11'
+__version__ = '3.1.17'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -88,6 +88,14 @@ except ImportError:
             return ''.join(out)
 
 
+def inflate(data):
+    return zlib.decompress(data, -zlib.MAX_WBITS)
+
+
+def deflate(data):
+    return zlib.compress(data)[2:-4]
+
+
 def application(environ, start_response):
     cookie = environ.get('HTTP_COOKIE', '')
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
@@ -103,9 +111,10 @@ def application(environ, start_response):
             yield html.encode('utf8')
         raise StopIteration
 
-    inflate = lambda x: zlib.decompress(x, -zlib.MAX_WBITS)
-    deflate = lambda x: zlib.compress(x)[2:-4]
-    rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
+    if 'rc4' in options and not __password__:
+        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        yield message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again')
+        raise StopIteration
 
     wsgi_input = environ['wsgi.input']
     input_data = wsgi_input.read()
@@ -116,11 +125,11 @@ def application(environ, start_response):
                 metadata = inflate(base64.b64decode(cookie))
                 payload = input_data or ''
             else:
-                metadata = inflate(rc4crypt(base64.b64decode(cookie), __password__))
-                payload = rc4crypt(input_data, __password__) if input_data else ''
+                metadata = inflate(RC4Cipher(__password__).encrypt(base64.b64decode(cookie)))
+                payload = RC4Cipher(__password__).encrypt(input_data) if input_data else ''
         else:
             if 'rc4' in options:
-                input_data = rc4crypt(input_data, __password__)
+                input_data = RC4Cipher(__password__).encrypt(input_data)
             metadata_length, = struct.unpack('!h', input_data[:2])
             metadata = inflate(input_data[2:2+metadata_length])
             payload = input_data[2+metadata_length:]
@@ -251,102 +260,5 @@ def application(environ, start_response):
     else:
         start_response('200 OK', [('Content-Type', __content_type__), ('X-GOA-Options', 'rc4')])
         yield struct.pack('!hh', int(response.status_code), len(response_headers_data))
-        yield rc4crypt(response_headers_data, __password__)
-        yield rc4crypt(data, __password__)
-
-
-class LegacyHandler(object):
-    """GoAgent 1.x GAE Fetch Server"""
-    @classmethod
-    def application(cls, environ, start_response):
-        return cls()(environ, start_response)
-
-    def __call__(self, environ, start_response):
-        self.environ = environ
-        self.start_response = start_response
-        return self.process_request()
-
-    def send_response(self, status, headers, content, content_type=__content_type__):
-        headers['Content-Length'] = str(len(content))
-        strheaders = '&'.join('%s=%s' % (k, v.encode('hex')) for k, v in headers.iteritems() if v)
-        #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-        if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-            data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
-        else:
-            data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
-        self.start_response('200 OK', [('Content-type', content_type)])
-        return [data]
-
-    def send_notify(self, method, url, status, content):
-        logging.warning('%r Failed: url=%r, status=%r', method, url, status)
-        content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
-        return self.send_response(status, {'content-type': 'text/html'}, content)
-
-    def process_request(self):
-        environ = self.environ
-        if environ['REQUEST_METHOD'] == 'GET':
-            redirect_url = 'https://%s/2' % environ['HTTP_HOST']
-            self.start_response('302 Redirect', [('Location', redirect_url)])
-            return [redirect_url]
-
-        data = zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH'])))
-        request = dict((k, v.decode('hex')) for k, _, v in (x.partition('=') for x in data.split('&')))
-
-        method = request['method']
-        url = request['url']
-        payload = request['payload']
-
-        if __password__ and __password__ != request.get('password', ''):
-            return self.send_notify(method, url, 403, 'Wrong password.')
-
-        if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
-            return self.send_notify(method, url, 403, 'Hosts Deny: url=%r' % url)
-
-        fetchmethod = getattr(urlfetch, method, '')
-        if not fetchmethod:
-            return self.send_notify(method, url, 501, 'Invalid Method')
-
-        deadline = URLFETCH_TIMEOUT
-
-        headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
-        headers['Connection'] = 'close'
-
-        errors = []
-        for _ in xrange(URLFETCH_MAX if 'fetchmax' not in request else int(request['fetchmax'])):
-            try:
-                response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
-                break
-            except apiproxy_errors.OverQuotaError as e:
-                time.sleep(4)
-            except urlfetch.DeadlineExceededError as e:
-                errors.append('DeadlineExceededError %s(deadline=%s)' % (e, deadline))
-                logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
-                time.sleep(1)
-            except urlfetch.DownloadError as e:
-                errors.append('DownloadError %s(deadline=%s)' % (e, deadline))
-                logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
-                time.sleep(1)
-            except urlfetch.InvalidURLError as e:
-                return self.send_notify(method, url, 501, 'Invalid URL: %s' % e)
-            except urlfetch.ResponseTooLargeError as e:
-                response = e.response
-                logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
-                m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
-                if m is None:
-                    headers['Range'] = 'bytes=0-%d' % URLFETCH_MAXSIZE
-                else:
-                    headers.pop('Range', '')
-                    headers.pop('range', '')
-                    start = int(m.group(1))
-                    headers['Range'] = 'bytes=%s-%d' % (start, start+URLFETCH_MAXSIZE)
-                deadline = URLFETCH_TIMEOUT * 2
-            except Exception as e:
-                errors.append('Exception %s(deadline=%s)' % (e, deadline))
-        else:
-            return self.send_notify(method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
-
-        headers = response.headers
-        if 'content-length' not in headers:
-            headers['content-length'] = str(len(response.content))
-        headers['connection'] = 'close'
-        return self.send_response(response.status_code, headers, response.content)
+        yield RC4Cipher(__password__).encrypt(response_headers_data)
+        yield RC4Cipher(__password__).encrypt(data)
