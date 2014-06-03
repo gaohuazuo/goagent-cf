@@ -97,18 +97,15 @@ def deflate(data):
 
 
 def application(environ, start_response):
-    cookie = environ.get('HTTP_COOKIE', '')
+    query_string = environ.get('QUERY_STRING', '')
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
-    if environ['REQUEST_METHOD'] == 'GET' and not cookie:
-        if '204' in environ['QUERY_STRING']:
-            start_response('204 No Content', [])
-            yield ''
-        else:
-            timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
-            ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-            html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
-            start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
-            yield html.encode('utf8')
+
+    if environ['REQUEST_METHOD'] == 'GET' and not query_string:
+        timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
+        ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
+        html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
+        start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
+        yield html.encode('utf8')
         raise StopIteration
 
     if 'rc4' in options and not __password__:
@@ -116,18 +113,13 @@ def application(environ, start_response):
         yield message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again')
         raise StopIteration
 
-    wsgi_input = environ['wsgi.input']
-    input_data = wsgi_input.read()
-
     try:
-        if cookie:
-            if 'rc4' not in options:
-                metadata = inflate(base64.b64decode(cookie))
-                payload = input_data or ''
-            else:
-                metadata = inflate(RC4Cipher(__password__).encrypt(base64.b64decode(cookie)))
-                payload = RC4Cipher(__password__).encrypt(input_data) if input_data else ''
+        if query_string:
+            query_string_1, _, query_string_2 = query_string.partition(',')
+            metadata, payload = inflate(base64.b64decode(query_string)).split('\n\n', 1)
         else:
+            wsgi_input = environ['wsgi.input']
+            input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH', '0')))
             if 'rc4' in options:
                 input_data = RC4Cipher(__password__).encrypt(input_data)
             metadata_length, = struct.unpack('!h', input_data[:2])
@@ -145,7 +137,7 @@ def application(environ, start_response):
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
-    if 'Content-Encoding' in headers:
+    if 'Content-Encoding' in headers and payload:
         if headers['Content-Encoding'] == 'deflate':
             payload = inflate(payload)
             headers['Content-Length'] = str(len(payload))

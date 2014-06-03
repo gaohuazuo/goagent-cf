@@ -755,20 +755,15 @@ class URLFetch(object):
         skip_headers = self.skip_headers
         metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
         # prepare GAE request
+        request_fetchserver = self.fetchserver
         request_method = 'POST'
         request_headers = {}
         if common.GAE_OBFUSCATE:
-            if 'rc4' in common.GAE_OPTIONS:
-                request_headers['X-GOA-Options'] = 'rc4'
-                cookie = base64.b64encode(rc4crypt(zlib.compress(metadata)[2:-4], kwargs.get('password'))).strip()
-                body = rc4crypt(body, kwargs.get('password'))
-            else:
-                cookie = base64.b64encode(zlib.compress(metadata)[2:-4]).strip()
-            request_headers['Cookie'] = cookie
-            if body:
-                request_headers['Content-Length'] = str(len(body))
-            else:
-                request_method = 'GET'
+            request_method = 'GET'
+            query_string = base64.b64encode(zlib.compress(metadata + '\n\n' + (body or ''))[2:-4]).strip()
+            request_fetchserver += '?' + query_string
+            if common.GAE_PAGESPEED:
+                request_fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', request_fetchserver)
         else:
             metadata = zlib.compress(metadata)[2:-4]
             body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
@@ -780,7 +775,7 @@ class URLFetch(object):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self.create_http_request(request_method, self.fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
+        response = self.create_http_request(request_method, request_fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
@@ -2342,10 +2337,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
                 kwargs['password'] = common.GAE_PASSWORD
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
-            if not common.GAE_PAGESPEED:
-                fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            else:
-                fetchservers = ['%s://1-ps.googleusercontent.com/h/%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
+            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
             return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
         else:
             if common.PHP_ENABLE:
@@ -2371,6 +2363,13 @@ class GAEProxyHandler(AdvancedProxyHandler):
                 common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.appspot.com']
             if host not in self.dns_cache:
                 self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
+        if common.GAE_PAGESPEED:
+            for i in xrange(1, 10):
+                host = '%d-ps.googleusercontent.com' % i
+                if host not in common.HOST_MAP:
+                    common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.googleusercontent.com']
+                if host not in self.dns_cache:
+                    self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
 
     def handle_urlfetch_error(self, fetchserver, response):
         gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
