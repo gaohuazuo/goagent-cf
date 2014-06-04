@@ -1460,6 +1460,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_bad_ipaddrs = {}
     ssl_connection_keepalive = False
     max_window = 4
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
@@ -1615,6 +1616,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 ssl_sock.ssl_time = connected_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
+                # remove from bad ipaddrs dict
+                self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
                 # verify SSL certificate.
                 if validate and hostname.endswith('.appspot.com'):
                     cert = ssl_sock.getpeercert()
@@ -1630,6 +1633,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
                 self.ssl_connection_time[ipaddr] = self.connect_timeout + random.random()
+                # record as bad ip
+                if ipaddr not in self.ssl_connection_bad_ipaddrs:
+                    self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
                 # close ssl socket
                 if ssl_sock:
                     ssl_sock.close()
@@ -1670,6 +1676,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
+                # remove from bad ipaddrs dict
+                self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
                 # verify SSL certificate.
                 if validate and hostname.endswith('.appspot.com'):
                     cert = ssl_sock.get_peer_certificate()
@@ -1683,6 +1691,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
                 self.ssl_connection_time[ipaddr] = self.connect_timeout + random.random()
+                # record as bad ip
+                if ipaddr not in self.ssl_connection_bad_ipaddrs:
+                    self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
                 # close ssl socket
                 if ssl_sock:
                     ssl_sock.close()
@@ -1716,10 +1727,19 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             pass
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
         sock = None
-        for _ in range(kwargs.get('max_retry', 3)):
+        for i in range(kwargs.get('max_retry', 3)):
             window = min((self.max_window+1)//2, len(addresses))
-            addresses.sort(key=self.ssl_connection_time.__getitem__)
-            addrs = addresses[:window] + random.sample(addresses, window)
+            if i == 0:
+                addresses.sort(key=self.ssl_connection_time.__getitem__)
+                addrs = addresses[:window] + random.sample(addresses, window)
+            else:
+                bad_ipaddrs = sorted(set(addresses) & set(self.ssl_connection_bad_ipaddrs), key=self.ssl_connection_bad_ipaddrs.get)
+                unkown_ipaddrs = list(set(addresses) - set(self.ssl_connection_bad_ipaddrs))
+                random.shuffle(unkown_ipaddrs)
+                logging.info("bad_ipaddrs length=%d, unkown_ipaddrs length=%d", len(bad_ipaddrs), len(unkown_ipaddrs))
+                addrs = bad_ipaddrs[:window] + unkown_ipaddrs[:window]
+                if len(addrs) < self.max_window:
+                    addrs += random.sample(addresses, self.max_window - len(addrs))
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
