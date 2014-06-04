@@ -1978,12 +1978,9 @@ class Common(object):
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
             iplist = []
-            for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
+            for dnslib_resolve in (dnslib_resolve_over_tcp,):
                 try:
-                    if "<local>" in dnsservers:
-                        iplist += socket.gethostbyname_ex(host)[-1]
-                    else:
-                        iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
+                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
                 except (socket.error, OSError) as e:
                     logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
             queue.put((host, dnsservers, iplist))
@@ -1999,8 +1996,7 @@ class Common(object):
                 for dnsserver in self.DNS_SERVERS:
                     logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
                     thread.start_new_thread(do_resolve, (host, [dnsserver], result_queue))
-                    thread.start_new_thread(do_resolve, (host, ["<local>"], result_queue))
-            for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote) * 2):
+            for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
                 try:
                     host, dnsservers, iplist = result_queue.get(timeout=10)
                     resolved_iplist += iplist or []
