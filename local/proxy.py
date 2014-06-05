@@ -1757,6 +1757,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             if len(good_addrs) > window:
                 good_addrs = sorted(good_addrs, key=self.ssl_connection_time.get)[:window]
             bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
+            if len(bad_ipaddrs) > window:
+                bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:window]
             unkown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
             if len(unkown_ipaddrs) > window:
                 random.shuffle(unkown_ipaddrs)
