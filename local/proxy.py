@@ -1756,13 +1756,13 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             good_addrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
             if len(good_addrs) > window:
                 good_addrs = sorted(good_addrs, key=self.ssl_connection_time.get)[:window]
-            bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
-            if len(bad_ipaddrs) > window:
-                bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:max(window, 2*window-len(good_addrs))]
             unkown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
             if len(unkown_ipaddrs) > window:
                 random.shuffle(unkown_ipaddrs)
                 unkown_ipaddrs = unkown_ipaddrs[:window]
+            bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
+            if len(bad_ipaddrs) > window:
+                bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:max(window, 3*window-len(good_addrs)-len(unkown_ipaddrs))]
             addrs = good_addrs + bad_ipaddrs + unkown_ipaddrs
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
