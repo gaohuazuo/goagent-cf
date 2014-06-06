@@ -1618,8 +1618,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 ssl_sock.ssl_time = connected_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
-                # remove from bad ipaddrs dict
+                # remove from bad/unknown ipaddrs dict
                 self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
+                self.ssl_connection_unknown_ipaddrs.pop(ipaddr, None)
                 # add to good ipaddrs dict
                 if ipaddr not in self.ssl_connection_good_ipaddrs:
                     self.ssl_connection_good_ipaddrs[ipaddr] = handshaked_time
@@ -1641,8 +1642,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # add to bad ipaddrs dict
                 if ipaddr not in self.ssl_connection_bad_ipaddrs:
                     self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
-                # remove from good ipaddrs dict
+                # remove from good/unknown ipaddrs dict
                 self.ssl_connection_good_ipaddrs.pop(ipaddr, None)
+                self.ssl_connection_unknown_ipaddrs.pop(ipaddr, None)
                 # close ssl socket
                 if ssl_sock:
                     ssl_sock.close()
@@ -1683,8 +1685,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
-                # remove from bad ipaddrs dict
+                # remove from bad/unknown ipaddrs dict
                 self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
+                self.ssl_connection_unknown_ipaddrs.pop(ipaddr, None)
                 # add to good ipaddrs dict
                 if ipaddr not in self.ssl_connection_good_ipaddrs:
                     self.ssl_connection_good_ipaddrs[ipaddr] = handshaked_time
@@ -1704,8 +1707,9 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # add to bad ipaddrs dict
                 if ipaddr not in self.ssl_connection_bad_ipaddrs:
                     self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
-                # remove from good ipaddrs dict
+                # remove from good/unknown ipaddrs dict
                 self.ssl_connection_good_ipaddrs.pop(ipaddr, None)
+                self.ssl_connection_unknown_ipaddrs.pop(ipaddr, None)
                 # close ssl socket
                 if ssl_sock:
                     ssl_sock.close()
@@ -1763,7 +1767,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
             if len(bad_ipaddrs) > window:
                 bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:max(window, 3*window-len(good_addrs)-len(unkown_ipaddrs))]
-            addrs = good_addrs + bad_ipaddrs + unkown_ipaddrs
+            addrs = good_addrs + unkown_ipaddrs + bad_ipaddrs
             queobj = gevent.queue.Queue() if gevent else Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
