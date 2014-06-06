@@ -1735,11 +1735,11 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         def reorg_ipaddrs():
             current_time = time.time()
             for ipaddr, ctime in self.ssl_connection_good_ipaddrs.items():
-                if current_time - ctime > 5 * 60:
+                if current_time - ctime > 4 * 60:
                     self.ssl_connection_good_ipaddrs.pop(ipaddr, None)
                     self.ssl_connection_unknown_ipaddrs[ipaddr] = ctime
             for ipaddr, ctime in self.ssl_connection_bad_ipaddrs.items():
-                if current_time - ctime > 5 * 60:
+                if current_time - ctime > 6 * 60:
                     self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
                     self.ssl_connection_unknown_ipaddrs[ipaddr] = ctime
             logging.info("good_ipaddrs=%d, bad_ipaddrs=%d, unkown_ipaddrs=%d", len(self.ssl_connection_good_ipaddrs), len(self.ssl_connection_bad_ipaddrs), len(self.ssl_connection_unknown_ipaddrs))
