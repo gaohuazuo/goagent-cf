@@ -1088,7 +1088,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         if do_ssl_handshake:
             try:
-                ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
+                # ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
+                # bugfix for youtube-dl
+                ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
             except StandardError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
