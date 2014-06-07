@@ -79,6 +79,7 @@ import random
 import base64
 import string
 import hashlib
+import uuid
 import threading
 import thread
 import socket
@@ -547,6 +548,14 @@ class ProxyUtil(object):
         return listen_ip
 
 
+def inflate(data):
+    return zlib.decompress(data, -zlib.MAX_WBITS)
+
+
+def deflate(data):
+    return zlib.compress(data)[2:-4]
+
+
 def parse_hostport(host, default_port=80):
     m = re.match(r'(.+)[#](\d+)$', host)
     if m:
@@ -753,11 +762,10 @@ class URLFetch(object):
         return response
 
     def __gae_fetch(self, method, url, headers, body, timeout, **kwargs):
-        # deflate = lambda x:zlib.compress(x)[2:-4]
         rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
-        if body:
+        if isinstance(body, basestring) and body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-                zbody = zlib.compress(body)[2:-4]
+                zbody = deflate(body)
                 if len(zbody) < len(body):
                     body = zbody
                     headers['Content-Encoding'] = 'deflate'
@@ -774,12 +782,13 @@ class URLFetch(object):
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
-            query_string = base64.b64encode(zlib.compress(metadata + '\n\n' + (body or ''))[2:-4]).strip()
-            request_fetchserver += '?' + query_string
+            ps_header = base64.b64encode(deflate(metadata + '\n' + (body or ''))).strip()
+            request_headers['X-GOA-PS'] = ps_header
+            request_fetchserver += '/ps/%s.gif' % uuid.uuid1()
             if common.GAE_PAGESPEED:
                 request_fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', request_fetchserver)
         else:
-            metadata = zlib.compress(metadata)[2:-4]
+            metadata = deflate(metadata)
             body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
             if 'rc4' in common.GAE_OPTIONS:
                 request_headers['X-GOA-Options'] = 'rc4'
@@ -808,9 +817,9 @@ class URLFetch(object):
             response.read = response.fp.read
             return response
         if 'rc4' not in response.app_options:
-            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+            response.msg = httplib.HTTPMessage(io.BytesIO(inflate(data)))
         else:
-            response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
+            response.msg = httplib.HTTPMessage(io.BytesIO(inflate(rc4crypt(data, kwargs.get('password')))))
             if kwargs.get('password') and response.fp:
                 response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         return response
@@ -818,14 +827,14 @@ class URLFetch(object):
     def __php_fetch(self, method, url, headers, body, timeout, **kwargs):
         if body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-                zbody = zlib.compress(body)[2:-4]
+                zbody = deflate(body)
                 if len(zbody) < len(body):
                     body = zbody
                     headers['Content-Encoding'] = 'deflate'
             headers['Content-Length'] = str(len(body))
         skip_headers = self.skip_headers
         metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
-        metadata = zlib.compress(metadata)[2:-4]
+        metadata = deflate(metadata)
         app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
         app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
         fetchserver = '%s?%s' % (self.fetchserver, random.random())
@@ -2039,7 +2048,7 @@ class Common(object):
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
             iplist = []
-            for dnslib_resolve in (dnslib_resolve_over_tcp,):
+            for dnslib_resolve in (dnslib_resolve_over_udp,):
                 try:
                     iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
                 except (socket.error, OSError) as e:
