@@ -1760,10 +1760,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             reorg_ipaddrs()
             window = self.max_window + i
             good_ipaddrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
-            good_ipaddrs = sorted(good_ipaddrs, key=self.ssl_connection_time.get)[:window]
+            good_ipaddrs = sorted(good_ipaddrs, key=self.ssl_connection_time.get)[:2*window]
             unkown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
             random.shuffle(unkown_ipaddrs)
-            unkown_ipaddrs = unkown_ipaddrs[:max(window, 2*window-len(good_ipaddrs))]
+            unkown_ipaddrs = unkown_ipaddrs[:max(window, 3*window-len(good_ipaddrs))]
             bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
             bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:max(window, 3*window-len(good_ipaddrs)-len(unkown_ipaddrs))]
             addrs = good_ipaddrs + unkown_ipaddrs + bad_ipaddrs
