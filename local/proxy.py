@@ -504,6 +504,20 @@ class SSLConnection(object):
         self._makefile_refs += 1
         return socket._fileobject(self, mode, bufsize, close=True)
 
+    @staticmethod
+    def context_builder(ssl_version='SSLv23', ca_certs=None, cipher_suites=('ALL', '!aNULL', '!eNULL')):
+        protocol_version = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
+        ssl_context = OpenSSL.SSL.Context(protocol_version)
+        if ca_certs:
+            ssl_context.load_verify_locations(os.path.abspath(ca_certs))
+            ssl_context.set_verify(OpenSSL.SSL.VERIFY_PEER, lambda c, x, e, d, ok: ok)
+        else:
+            ssl_context.set_verify(OpenSSL.SSL.VERIFY_NONE, lambda c, x, e, d, ok: ok)
+        ssl_context.set_cipher_list(':'.join(cipher_suites))
+        if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
+            ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
+        return ssl_context
+
 
 class ProxyUtil(object):
     """ProxyUtil module, based on urllib2"""
@@ -3074,6 +3088,8 @@ def get_process_list():
     return process_list
 
 def pre_start():
+    if not OpenSSL:
+        logging.warning('python-openssl not found, please install it!')
     if sys.platform == 'cygwin':
         logging.info('cygwin is not officially supported, please continue at your own risk :)')
         #sys.exit(-1)
@@ -3116,7 +3132,7 @@ def pre_start():
         GAEProxyHandler.ssl_connection_keepalive = True
     if common.GAE_SSLVERSION:
         GAEProxyHandler.ssl_version = getattr(ssl, 'PROTOCOL_%s' % common.GAE_SSLVERSION)
-        GAEProxyHandler.openssl_context = OpenSSL.SSL.Context(getattr(OpenSSL.SSL, '%s_METHOD' % common.GAE_SSLVERSION))
+        GAEProxyHandler.openssl_context = SSLConnection.context_builder(common.GAE_SSLVERSION)
     if common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
@@ -3145,8 +3161,6 @@ def pre_start():
     else:
         AdvancedProxyHandler.dns_servers = common.HTTP_DNS or common.DNS_SERVERS
         AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
-    if not OpenSSL:
-        logging.warning('python-openssl not found, please install it!')
     RangeFetch.threads = common.AUTORANGE_THREADS
     RangeFetch.maxsize = common.AUTORANGE_MAXSIZE
     RangeFetch.bufsize = common.AUTORANGE_BUFSIZE
