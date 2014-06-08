@@ -2064,8 +2064,8 @@ class Common(object):
             resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
             result_queue = Queue.Queue()
             for host in need_resolve_remote:
-                for _ in xrange(2):
-                    logging.debug('double resolve host=%r by socket.getaddrinfo', host)
+                for _ in xrange(3):
+                    logging.debug('triple resolve host=%r by socket.getaddrinfo', host)
                     try:
                         resolved_iplist += socket.gethostbyname_ex(host)[-1]
                     except socket.error as e:
