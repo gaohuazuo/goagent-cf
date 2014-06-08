@@ -1779,7 +1779,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             pass
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
         sock = None
-        for i in range(kwargs.get('max_retry', 3)):
+        for i in range(kwargs.get('max_retry', 5)):
             reorg_ipaddrs()
             window = self.max_window + i
             good_ipaddrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
