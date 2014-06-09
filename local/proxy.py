@@ -2462,7 +2462,7 @@ class GAEProxyHandler(AdvancedProxyHandler):
         return AdvancedProxyHandler.gethostbyname2(self, hostname)
 
     def handle_urlfetch_error(self, fetchserver, response):
-        gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
+        gae_appid = urlparse.urlsplit(fetchserver).hostname.split('.')[-3]
         if response.app_status == 503:
             # appid over qouta, switch to next appid
             if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
@@ -2494,7 +2494,7 @@ class PHPProxyHandler(AdvancedProxyHandler):
             self.handler_filters.insert(-1, HostsFilter())
         if not common.PROXY_ENABLE:
             common.resolve_iplist()
-            fetchhost = re.sub(r':\d+$', '', urlparse.urlsplit(common.PHP_FETCHSERVER).netloc)
+            fetchhost = urlparse.urlsplit(common.PHP_FETCHSERVER).hostname
             logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
             if common.PHP_USEHOSTS and fetchhost in common.HOST_MAP:
                 hostname = common.HOST_MAP[fetchhost]
@@ -2749,9 +2749,9 @@ class PacUtil(object):
                 elif line.startswith('||'):
                     domain = line[2:].lstrip('*').rstrip('/')
                 elif line.startswith('|'):
-                    domain = urlparse.urlsplit(line[1:]).netloc.lstrip('*')
+                    domain = urlparse.urlsplit(line[1:]).hostname.lstrip('*')
                 elif line.startswith(('http://', 'https://')):
-                    domain = urlparse.urlsplit(line).netloc.lstrip('*')
+                    domain = urlparse.urlsplit(line).hostname.lstrip('*')
                 elif re.search(r'^([\w\-\_\.]+)([\*\/]|$)', line):
                     domain = re.split(r'[\*\/]', line)[0]
                 else:
