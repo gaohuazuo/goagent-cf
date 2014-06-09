@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.17'
+__version__ = '3.1.18'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -13,7 +13,6 @@ import time
 import struct
 import zlib
 import base64
-import binascii
 import logging
 import urlparse
 import io
