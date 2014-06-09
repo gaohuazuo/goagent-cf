@@ -99,7 +99,6 @@ def deflate(data):
 
 def application(environ, start_response):
     ps_headers = dict((x, environ[x]) for x in environ if x.startswith('HTTP_X_GOA_PS'))
-    # logging.info('ps_headers=%r', ps_headers)
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
 
     if environ['REQUEST_METHOD'] == 'GET' and not ps_headers:
@@ -224,7 +223,7 @@ def application(environ, start_response):
         if not error_string:
             logurl = 'https://appengine.google.com/logs?&app_id=%s' % os.environ['APPLICATION_ID']
             error_string = 'Internal Server Error. <p/>try <a href="javascript:window.location.reload(true);">refresh</a> or goto <a href="%s" target="_blank">appengine.google.com</a> for details' % logurl
-        yield message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method,  error_string)
+        yield message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method, error_string)
         raise StopIteration
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
