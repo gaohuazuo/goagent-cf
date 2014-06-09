@@ -2051,16 +2051,42 @@ class Common(object):
         self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
 
-    def resolve_iplist(self):
-        def do_resolve(host, dnsservers, queue):
-            iplist = []
-            for dnslib_resolve in (dnslib_resolve_over_udp,):
+    def extend_iplist(self, iplist_name, hosts):
+        logging.info('extend_iplist start for hosts=%s', hosts)
+        new_iplist = []
+        def do_remote_resolve(host, dnsserver, queue):
+            assert isinstance(dnsserver, basestring)
+            for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
                 try:
-                    iplist += dnslib_record2iplist(dnslib_resolve_over_udp(host, dnsservers, timeout=4, blacklist=self.DNS_BLACKLIST))
+                    iplist = dnslib_record2iplist(dnslib_resolve(host, [dnsserver], timeout=4, blacklist=self.DNS_BLACKLIST))
+                    queue.put((host, dnsserver, iplist))
                 except (socket.error, OSError) as e:
-                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
-            queue.put((host, dnsservers, iplist))
+                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve.func_name, host, e)
+        result_queue = Queue.Queue()
+        for host in hosts:
+            for dnsserver in self.DNS_SERVERS:
+                logging.debug('remote resolve host=%r from dnsserver=%r', host, dnsserver)
+                thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
+        for _ in xrange(len(self.DNS_SERVERS) * len(hosts) * 2):
+            try:
+                host, dnsserver, iplist = result_queue.get(timeout=8)
+                logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
+                new_iplist += iplist
+            except Queue.Empty:
+                break
+        self.IPLIST_MAP[iplist_name] = list(set(self.IPLIST_MAP[iplist_name] + new_iplist))
+        logging.info('extend_iplist finished, added %s', len(set(new_iplist)))
+
+    def resolve_iplist(self):
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
+        def do_local_resolve(host, queue):
+            assert isinstance(host, basestring)
+            for _ in xrange(3):
+                try:
+                    queue.put((host, socket.gethostbyname_ex(host)[-1]))
+                except (socket.error, OSError) as e:
+                    logging.warning('socket.gethostbyname_ex host=%r failed: %s', host, e)
+                    time.sleep(0.1)
         google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
@@ -2069,23 +2095,16 @@ class Common(object):
             resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
             result_queue = Queue.Queue()
             for host in need_resolve_remote:
-                for _ in xrange(3):
-                    logging.debug('triple resolve host=%r by socket.getaddrinfo', host)
-                    try:
-                        resolved_iplist += socket.gethostbyname_ex(host)[-1]
-                    except socket.error as e:
-                        logging.debug('resolve host=%r by socket.getaddrinfo failed: %r', host, e)
-            for host in need_resolve_remote:
-                for dnsserver in self.DNS_SERVERS:
-                    logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
-                    thread.start_new_thread(do_resolve, (host, [dnsserver], result_queue))
-            for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
+                logging.debug('local resolve host=%r', host)
+                thread.start_new_thread(do_local_resolve, (host, result_queue))
+            for _ in xrange(len(need_resolve_remote)):
                 try:
-                    host, dnsservers, iplist = result_queue.get(timeout=8)
-                    resolved_iplist += iplist or []
-                    logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
+                    host, iplist = result_queue.get(timeout=8)
+                    resolved_iplist += iplist
                 except Queue.Empty:
                     break
+            if name == 'google_hk':
+                spawn_later(1, self.extend_iplist, name, need_resolve_remote)
             if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
                 resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
@@ -2434,19 +2453,13 @@ class GAEProxyHandler(AdvancedProxyHandler):
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
         random.shuffle(common.GAE_APPIDS)
-        for appid in common.GAE_APPIDS:
-            host = '%s.appspot.com' % appid
-            if host not in common.HOST_MAP:
-                common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.appspot.com']
-            if host not in self.dns_cache:
-                self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
-        if common.GAE_PAGESPEED:
-            for i in xrange(1, 10):
-                host = '%d-ps.googleusercontent.com' % i
-                if host not in common.HOST_MAP:
-                    common.HOST_MAP[host] = common.HOST_POSTFIX_MAP['.googleusercontent.com']
-                if host not in self.dns_cache:
-                    self.dns_cache[host] = common.IPLIST_MAP[common.HOST_MAP[host]]
+
+    def gethostbyname2(self, hostname):
+        for postfix in ('.appspot.com', '.googleusercontent.com'):
+            if hostname.endswith(postfix):
+                host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP[postfix]
+                return common.IPLIST_MAP.get(host) or host.split('|')
+        return AdvancedProxyHandler.gethostbyname2(self, hostname)
 
     def handle_urlfetch_error(self, fetchserver, response):
         gae_appid = urlparse.urlsplit(fetchserver).netloc.split('.')[-3]
