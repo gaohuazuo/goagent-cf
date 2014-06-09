@@ -9,7 +9,7 @@ handlers:
   script: gae.application
   secure: optional
 
-- url: /2
+- url: /2.*
   script: gae.application
   secure: optional
 

@@ -782,9 +782,10 @@ class URLFetch(object):
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
-            ps_header = base64.b64encode(deflate(metadata + '\n' + (body or ''))).strip()
-            request_headers['X-GOA-PS'] = ps_header
             request_fetchserver += '/ps/%s.gif' % uuid.uuid1()
+            request_headers['X-GOA-PS1'] = base64.b64encode(deflate(metadata)).strip()
+            if body:
+                request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
             if common.GAE_PAGESPEED:
                 request_fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', request_fetchserver)
         else:

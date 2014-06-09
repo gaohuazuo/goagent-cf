@@ -98,11 +98,11 @@ def deflate(data):
 
 
 def application(environ, start_response):
-    ps_header = environ.get('HTTP_X_GOA_PS', '')
-    # logging.info('ps_header=%r', ps_header)
+    ps_headers = dict((x, environ[x]) for x in environ if x.startswith('HTTP_X_GOA_PS'))
+    # logging.info('ps_headers=%r', ps_headers)
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
 
-    if environ['REQUEST_METHOD'] == 'GET' and not ps_header:
+    if environ['REQUEST_METHOD'] == 'GET' and not ps_headers:
         timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
         html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
@@ -116,8 +116,9 @@ def application(environ, start_response):
         raise StopIteration
 
     try:
-        if ps_header:
-            metadata, payload = inflate(base64.b64decode(ps_header)).split('\n\n', 1)
+        if ps_headers:
+            metadata = inflate(base64.b64decode(ps_headers['HTTP_X_GOA_PS1']))
+            payload = inflate(base64.b64decode(ps_headers['HTTP_X_GOA_PS2'])) if 'HTTP_X_GOA_PS2' in ps_headers else ''
         else:
             wsgi_input = environ['wsgi.input']
             input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH', '0')))
@@ -255,6 +256,7 @@ def application(environ, start_response):
         yield struct.pack('!hh', int(response.status_code), len(response_headers_data))
         yield RC4Cipher(__password__).encrypt(response_headers_data)
         yield RC4Cipher(__password__).encrypt(data)
+
 
 class LegacyHandler(object):
     """GoAgent 1.x GAE Fetch Server"""
