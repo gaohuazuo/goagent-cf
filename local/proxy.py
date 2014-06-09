@@ -2968,8 +2968,8 @@ class PacFileFilter(BaseProxyHandlerFilter):
             with open(pacfile, 'rb') as fp:
                 content = fp.read()
                 if not is_local_client:
-                    listen_ip = ProxyUtil.get_listen_ip()
-                    content = content.replace('127.0.0.1', listen_ip)
+                    serving_addr = urlparts.hostname or ProxyUtil.get_listen_ip()
+                    content = content.replace('127.0.0.1', serving_addr)
                 headers = {'Content-Type': 'text/plain'}
                 if 'gzip' in handler.headers.get('Accept-Encoding', ''):
                     headers['Content-Encoding'] = 'gzip'
