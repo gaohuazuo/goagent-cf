@@ -2074,8 +2074,8 @@ class Common(object):
                 new_iplist += iplist
             except Queue.Empty:
                 break
+        logging.info('extend_iplist finished, added %s', len(set(self.IPLIST_MAP[iplist_name])-set(new_iplist)))
         self.IPLIST_MAP[iplist_name] = list(set(self.IPLIST_MAP[iplist_name] + new_iplist))
-        logging.info('extend_iplist finished, added %s', len(set(new_iplist)))
 
     def resolve_iplist(self):
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
@@ -2104,7 +2104,8 @@ class Common(object):
                 except Queue.Empty:
                     break
             if name == 'google_hk':
-                spawn_later(1, self.extend_iplist, name, need_resolve_remote)
+                for delay in (1, 120, 300, 600, 900):
+                    spawn_later(delay, self.extend_iplist, name, need_resolve_remote)
             if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
                 resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
