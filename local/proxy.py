@@ -702,9 +702,19 @@ def get_dnsserver_list():
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
-        __import__('time').sleep(seconds)
+        time.sleep(seconds)
         return target(*args, **kwargs)
-    return __import__('thread').start_new_thread(wrap, args, kwargs)
+    return thread.start_new_thread(wrap, args, kwargs)
+
+
+def spawn_period(seconds, target, *args, **kwargs):
+    def wrap(*args, **kwargs):
+        try:
+            time.sleep(seconds)
+            target(*args, **kwargs)
+        except StandardError as e:
+            logging.warning('%r(%s, %s) error: %r', target, args, kwargs, e)
+    return thread.start_new_thread(wrap, args, kwargs)
 
 
 def is_clienthello(data):
