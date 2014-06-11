@@ -2068,10 +2068,12 @@ class Common(object):
             assert isinstance(dnsserver, basestring)
             for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
                 try:
+                    time.sleep(random.random())
                     iplist = dnslib_record2iplist(dnslib_resolve(host, [dnsserver], timeout=4, blacklist=self.DNS_BLACKLIST))
                     queue.put((host, dnsserver, iplist))
                 except (socket.error, OSError) as e:
                     logging.warning('%r remote host=%r failed: %s', dnslib_resolve.func_name, host, e)
+                    time.sleep(1)
         result_queue = Queue.Queue()
         for host in hosts:
             for dnsserver in self.DNS_SERVERS:
@@ -2079,7 +2081,7 @@ class Common(object):
                 thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
         for _ in xrange(len(self.DNS_SERVERS) * len(hosts) * 2):
             try:
-                host, dnsserver, iplist = result_queue.get(timeout=8)
+                host, dnsserver, iplist = result_queue.get(timeout=16)
                 logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
                 new_iplist += iplist
             except Queue.Empty:
@@ -2114,7 +2116,7 @@ class Common(object):
                 except Queue.Empty:
                     break
             if name == 'google_hk':
-                for delay in (1, 120, 300, 600, 900):
+                for delay in (1, 60, 150, 240, 300, 450, 600, 900):
                     spawn_later(delay, self.extend_iplist, name, need_resolve_remote)
             if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
