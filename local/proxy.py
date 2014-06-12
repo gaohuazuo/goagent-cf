@@ -731,6 +731,10 @@ def is_clienthello(data):
         return False
 
 
+def is_google_ip(ipaddr):
+    return ipaddr.startswith(('173.194.', '207.126.', '209.85.', '216.239.', '64.18.', '64.233.', '66.102.', '66.249.', '72.14.', '74.125.'))
+
+
 def extract_sni_name(packet):
     if packet.startswith('\x16\x03'):
         stream = io.BytesIO(packet)
@@ -2083,6 +2087,8 @@ class Common(object):
             try:
                 host, dnsserver, iplist = result_queue.get(timeout=16)
                 logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
+                if host.endswith('.google.com'):
+                    iplist = [x for x in iplist if is_google_ip(x)]
                 new_iplist += iplist
             except Queue.Empty:
                 break
@@ -2112,6 +2118,8 @@ class Common(object):
             for _ in xrange(len(need_resolve_remote)):
                 try:
                     host, iplist = result_queue.get(timeout=8)
+                    if host.endswith('.google.com'):
+                        iplist = [x for x in iplist if is_google_ip(x)]
                     resolved_iplist += iplist
                 except Queue.Empty:
                     break
