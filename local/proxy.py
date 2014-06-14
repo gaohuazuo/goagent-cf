@@ -253,7 +253,7 @@ class CertUtil(object):
         ca.set_pubkey(key)
         ca.add_extensions([
             OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
-            OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
+            # OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
             OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True, b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
             OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
             OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca), ])
