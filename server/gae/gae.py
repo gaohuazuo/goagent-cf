@@ -103,13 +103,13 @@ def application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET' and not ps_headers:
         timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-        html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
+        text = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
         start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
-        yield html.encode('utf8')
+        yield text.encode('utf8')
         raise StopIteration
 
     if 'rc4' in options and not __password__:
-        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again')
         raise StopIteration
 
@@ -130,7 +130,7 @@ def application(environ, start_response):
         url = headers.pop('G-Url')
     except (zlib.error, KeyError, ValueError):
         import traceback
-        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('500 Internal Server Error', 'Bad Request (metadata) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc())
         raise StopIteration
 
@@ -147,31 +147,31 @@ def application(environ, start_response):
     #logging.info('request headers=%s', headers)
 
     if __password__ and __password__ != kwargs.get('password', ''):
-        start_response('403 Forbidden', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('403 Wrong password', 'Wrong password(%r)' % kwargs.get('password', ''), 'GoAgent proxy.ini password is wrong!')
         raise StopIteration
 
     netloc = urlparse.urlparse(url).netloc
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
-        start_response('403 Forbidden', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('403 Hosts Deny', 'Hosts Deny(%r)' % netloc, detail='url=%r' % url)
         raise StopIteration
 
     if len(url) > MAX_URL_LENGTH:
-        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('400 Bad Request', 'length of URL too long(greater than %r)' % MAX_URL_LENGTH, detail='url=%r' % url)
         raise StopIteration
 
     if netloc.startswith(('127.0.0.', '::1', 'localhost')):
-        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         html = ''.join('<a href="https://%s/">%s</a><br/>' % (x, x) for x in ('google.com', 'mail.google.com'))
         yield message_html('GoAgent %s is Running' % __version__, 'Now you can visit some websites', html)
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
-        start_response('405 Method Not Allowed', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         yield message_html('405 Method Not Allowed', 'Method Not Allowed: %r' % method, detail='Method Not Allowed URL=%r' % url)
         raise StopIteration
 
@@ -217,7 +217,7 @@ def application(environ, start_response):
             if i == 0 and method == 'GET':
                 deadline = URLFETCH_TIMEOUT * 2
     else:
-        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
         error_string = '<br />\n'.join(errors)
         if not error_string:
             logurl = 'https://appengine.google.com/logs?&app_id=%s' % os.environ['APPLICATION_ID']
