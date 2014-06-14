@@ -2320,6 +2320,23 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
             return [handler.STRIP, True, None]
 
 
+
+class URLRewriteFilter(BaseProxyHandlerFilter):
+    """url rewrite filter"""
+    rules = {
+                'www.google.com': (r'^https?://www\.google\.com/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+                'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+            }
+    def filter(self, handler):
+        if handler.host in self.rules:
+            pattern, callback = self.rules[handler.host]
+            m = re.search(pattern, handler.path)
+            if m:
+                logging.debug('URLRewriteFilter metched %r', handler.path)
+                headers = {'Location': callback(m), 'Connection': 'close'}
+                return [handler.MOCK, 301, headers, '']
+
+
 class HostsFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter_localfile(self, handler, filename):
@@ -2466,7 +2483,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 
 class GAEProxyHandler(AdvancedProxyHandler):
     """GAE Proxy Handler"""
-    handler_filters = [UserAgentFilter(), WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), AutoRangeFilter(), GAEFetchFilter()]
+    handler_filters = [UserAgentFilter(), WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), URLRewriteFilter(), HostsFilter(), DirectRegionFilter(), AutoRangeFilter(), GAEFetchFilter()]
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
