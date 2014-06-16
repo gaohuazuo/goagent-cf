@@ -1979,28 +1979,69 @@ class Common(object):
             except socket.error as e:
                 logging.info('Fail try profile ipv6 %r, fallback ipv4', e)
                 self.GAE_PROFILE = 'ipv4'
-        hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
-            self.CONFIG.set(hosts_section, '.' + os.environ['USERDNSDOMAIN'], '')
+            self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
 
-        self.HOST_MAP = collections.OrderedDict((k, v or k) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
-        self.HOST_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and k.startswith('.'))
-        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
+        host_map = collections.OrderedDict()
+        host_postfix_map = collections.OrderedDict()
+        hostport_map = collections.OrderedDict()
+        hostport_postfix_map = collections.OrderedDict()
+        urlre_map = collections.OrderedDict()
+        withgae_sites = []
+        crlf_sites = []
+        forcehttps_sites = []
+        noforcehttps_sites = []
+        fakehttps_sites = []
+        nofakehttps_sites = []
+        dns_servers = []
 
-        self.HOSTPORT_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and not k.startswith('.'))
-        self.HOSTPORT_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if ':' in k and k.startswith('.'))
+        for site, rule in self.CONFIG.items('profile/%s' % self.GAE_PROFILE):
+            rules = [x.strip() for x in re.split(r'[,\|]', rule) if x.strip()]
+            if site == 'dns':
+                dns_servers = rules
+                continue
+            for name, sites in [('withgae', withgae_sites),
+                                ('crlf', crlf_sites),
+                                ('forcehttps', forcehttps_sites),
+                                ('noforcehttps', noforcehttps_sites),
+                                ('fakehttps', fakehttps_sites),
+                                ('nofakehttps', nofakehttps_sites)]:
+                if name in rules:
+                    sites.append(site)
+                    rules.remove(name)
+            hostname = rules and rules[0]
+            if not hostname:
+                continue
+            if hostname == 'direct':
+                hostname = ''
+            if ':' in site and '\\' not in site:
+                if site.startswith('.'):
+                    hostport_postfix_map[site] = hostname
+                else:
+                    hostport_map[site] = hostname
+            elif '\\' in site:
+                urlre_map[re.compile(site).match] = hostname
+            else:
+                if site.startswith('.'):
+                    host_postfix_map[site] = hostname
+                else:
+                    host_map[site] = hostname
+
+        self.HTTP_DNS = dns_servers
+        self.WITHGAE_SITES = set(withgae_sites)
+        self.CRLF_SITES = tuple(crlf_sites)
+        self.FORCEHTTPS_SITES = tuple(forcehttps_sites)
+        self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
+        self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
+        self.NOFAKEHTTPS_SITES = set(nofakehttps_sites)
+        self.HOSTPORT_MAP = hostport_map
+        self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
         self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
-
-        self.URLRE_MAP = collections.OrderedDict((re.compile(k).match, v) for k, v in self.CONFIG.items(hosts_section) if '\\' in k)
-
-        self.HTTP_WITHGAE = set(self.CONFIG.get(http_section, 'withgae').split('|'))
-        self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
-        self.HTTP_FORCEHTTPS = tuple(self.CONFIG.get(http_section, 'forcehttps').split('|')) if self.CONFIG.get(http_section, 'forcehttps').strip() else tuple()
-        self.HTTP_NOFORCEHTTPS = set(self.CONFIG.get(http_section, 'noforcehttps').split('|')) if self.CONFIG.get(http_section, 'noforcehttps').strip() else set()
-        self.HTTP_FAKEHTTPS = tuple(self.CONFIG.get(http_section, 'fakehttps').split('|')) if self.CONFIG.get(http_section, 'fakehttps').strip() else tuple()
-        self.HTTP_NOFAKEHTTPS = set(self.CONFIG.get(http_section, 'nofakehttps').split('|')) if self.CONFIG.get(http_section, 'nofakehttps').strip() else set()
-        self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
+        self.URLRE_MAP = urlre_map
+        self.HOST_MAP = host_map
+        self.HOST_POSTFIX_MAP = host_postfix_map
+        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
@@ -2411,7 +2452,7 @@ class HostsFilter(BaseProxyHandlerFilter):
         if handler.command == 'CONNECT':
             return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
         else:
-            if host.endswith(common.HTTP_CRLFSITES):
+            if host.endswith(common.CRLF_SITES):
                 handler.close_connection = True
                 return [handler.DIRECT, {'crlf': True}]
             else:
@@ -3262,14 +3303,14 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, HostsFilter())
     if True:
         GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
-    if common.HTTP_FAKEHTTPS:
-        GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.HTTP_FAKEHTTPS, common.HTTP_NOFAKEHTTPS))
-        PHPProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.HTTP_FAKEHTTPS, common.HTTP_NOFAKEHTTPS))
-    if common.HTTP_FORCEHTTPS:
-        GAEProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.HTTP_FORCEHTTPS, common.HTTP_NOFORCEHTTPS))
-        PHPProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.HTTP_FORCEHTTPS, common.HTTP_NOFORCEHTTPS))
-    if common.HTTP_WITHGAE:
-        GAEProxyHandler.handler_filters.insert(0, WithGAEFilter(common.HTTP_WITHGAE))
+    if common.FAKEHTTPS_SITES:
+        GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
+        PHPProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
+    if common.FORCEHTTPS_SITES:
+        GAEProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.FORCEHTTPS_SITES, common.NOFORCEHTTPS_SITES))
+        PHPProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.FORCEHTTPS_SITES, common.NOFORCEHTTPS_SITES))
+    if common.WITHGAE_SITES:
+        GAEProxyHandler.handler_filters.insert(0, WithGAEFilter(common.WITHGAE_SITES))
     if common.USERAGENT_ENABLE:
         GAEProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
         PHPProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
