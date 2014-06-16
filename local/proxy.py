@@ -86,10 +86,7 @@ import Queue
 import ConfigParser
 import urllib2
 import OpenSSL
-try:
-    import dnslib
-except ImportError:
-    dnslib = None
+import dnslib
 try:
     import pygeoip
 except ImportError:
