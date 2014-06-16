@@ -836,7 +836,38 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = netloc
             self.port = 443 if self.scheme == 'https' else 80
 
+
+    @staticmethod
+    def _io_copy(dest, source, timeout, bufsize):
+        try:
+            dest.settimeout(timeout)
+            source.settimeout(timeout)
+            while 1:
+                data = source.recv(bufsize)
+                if not data:
+                    break
+                dest.sendall(data)
+        except socket.timeout:
+            pass
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+            if e.args[0] in (errno.EBADF,):
+                return
+        finally:
+            for sock in (dest, source):
+                try:
+                    sock.close()
+                except StandardError:
+                    pass
+
     def forward_socket(self, local, remote, timeout):
+        """forward socket"""
+        bufsize = self.bufsize
+        thread.start_new_thread(self.__class__._io_copy, (remote.dup(), local.dup(), timeout, bufsize))
+        self.__class__._io_copy(local, remote, timeout, bufsize)
+
+    def forward_socket_deprecated(self, local, remote, timeout):
         try:
             tick = 1
             bufsize = self.bufsize
@@ -1870,40 +1901,6 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
                 logging.debug('URLRewriteFilter metched %r', handler.path)
                 headers = {'Location': callback(m), 'Connection': 'close'}
                 return [handler.MOCK, 301, headers, '']
-
-
-class GreenForwardMixin:
-    """green forward mixin"""
-
-    @staticmethod
-    def io_copy(dest, source, timeout, bufsize):
-        try:
-            dest.settimeout(timeout)
-            source.settimeout(timeout)
-            while 1:
-                data = source.recv(bufsize)
-                if not data:
-                    break
-                dest.sendall(data)
-        except socket.timeout:
-            pass
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
-                raise
-            if e.args[0] in (errno.EBADF,):
-                return
-        finally:
-            for sock in (dest, source):
-                try:
-                    sock.close()
-                except StandardError:
-                    pass
-
-    def forward_socket(self, local, remote, timeout):
-        """forward socket"""
-        bufsize = self.bufsize
-        thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
-        GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
 
 
 def get_uptime():

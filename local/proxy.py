@@ -186,6 +186,7 @@ from proxylib import ProxyUtil
 from proxylib import inflate
 from proxylib import deflate
 from proxylib import get_dnsserver_list
+from proxylib import spawn_later
 from proxylib import AuthFilter
 from proxylib import AdvancedProxyHandler
 from proxylib import BlackholeFilter
@@ -201,9 +202,7 @@ from proxylib import get_process_list
 from proxylib import get_uptime
 from proxylib import LocalProxyServer
 from proxylib import RangeFetch
-from proxylib import spawn_later
 from proxylib import XORCipher
-from proxylib import GreenForwardMixin
 from proxylib import SimpleProxyHandler
 
 
@@ -866,22 +865,6 @@ class ProxyChainPHPProxyHandler(ProxyChainMixin, PHPProxyHandler):
     pass
 
 
-class GreenForwardGAEProxyHandler(GreenForwardMixin, GAEProxyHandler):
-    pass
-
-
-class GreenForwardPHPProxyHandler(GreenForwardMixin, PHPProxyHandler):
-    pass
-
-
-class ProxyChainGreenForwardGAEProxyHandler(ProxyChainMixin, GreenForwardGAEProxyHandler):
-    pass
-
-
-class ProxyChainGreenForwardPHPProxyHandler(ProxyChainMixin, GreenForwardPHPProxyHandler):
-    pass
-
-
 class PacUtil(object):
     """GoAgent Pac Util"""
 
@@ -1367,12 +1350,10 @@ def main():
     if common.GAE_ENABLE:
         CertUtil.check_ca()
     sys.stderr.write(common.info())
-
-    uvent_enabled = 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop)
-
+    #uvent_enabled = 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop)
     if common.PHP_ENABLE:
         host, port = common.PHP_LISTEN.split(':')
-        HandlerClass = ((PHPProxyHandler, GreenForwardPHPProxyHandler) if not common.PROXY_ENABLE else (ProxyChainPHPProxyHandler, ProxyChainGreenForwardPHPProxyHandler))[uvent_enabled]
+        HandlerClass = PHPProxyHandler if not common.PROXY_ENABLE else ProxyChainPHPProxyHandler
         server = LocalProxyServer((host, int(port)), HandlerClass)
         thread.start_new_thread(server.serve_forever, tuple())
 
@@ -1392,7 +1373,7 @@ def main():
             sys.exit(-1)
 
     if common.GAE_ENABLE:
-        HandlerClass = ((GAEProxyHandler, GreenForwardGAEProxyHandler) if not common.PROXY_ENABLE else (ProxyChainGAEProxyHandler, ProxyChainGreenForwardGAEProxyHandler))[uvent_enabled]
+        HandlerClass = GAEProxyHandler if not common.PROXY_ENABLE else ProxyChainGAEProxyHandler
         server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), HandlerClass)
         try:
             server.serve_forever()
