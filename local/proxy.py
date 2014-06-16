@@ -1956,6 +1956,7 @@ class Common(object):
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
+        self.GAE_ENABLE = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
@@ -3326,7 +3327,8 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     pre_start()
-    CertUtil.check_ca()
+    if common.GAE_ENABLE:
+        CertUtil.check_ca()
     sys.stderr.write(common.info())
 
     uvent_enabled = 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop)
@@ -3352,14 +3354,15 @@ def main():
             logging.exception('GoAgent DNSServer requires dnslib and gevent 1.0')
             sys.exit(-1)
 
-    HandlerClass = ((GAEProxyHandler, GreenForwardGAEProxyHandler) if not common.PROXY_ENABLE else (ProxyChainGAEProxyHandler, ProxyChainGreenForwardGAEProxyHandler))[uvent_enabled]
-    server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), HandlerClass)
-    try:
-        server.serve_forever()
-    except SystemError as e:
-        if '(libev) select: ' in repr(e):
-            logging.error('PLEASE START GOAGENT BY uvent.bat')
-            sys.exit(-1)
+    if common.GAE_ENABLE:
+        HandlerClass = ((GAEProxyHandler, GreenForwardGAEProxyHandler) if not common.PROXY_ENABLE else (ProxyChainGAEProxyHandler, ProxyChainGreenForwardGAEProxyHandler))[uvent_enabled]
+        server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), HandlerClass)
+        try:
+            server.serve_forever()
+        except SystemError as e:
+            if '(libev) select: ' in repr(e):
+                logging.error('PLEASE START GOAGENT BY uvent.bat')
+                sys.exit(-1)
 
 if __name__ == '__main__':
     main()
