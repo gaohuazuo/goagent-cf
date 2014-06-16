@@ -95,38 +95,7 @@ try:
 except ImportError:
     pygeoip = None
 
-from proxylib import LRUCache
-from proxylib import CertUtil
-from proxylib import dnslib_resolve_over_tcp
-from proxylib import dnslib_resolve_over_udp
-from proxylib import dnslib_record2iplist
-from proxylib import SSLConnection
-from proxylib import ProxyUtil
-from proxylib import inflate
-from proxylib import deflate
-from proxylib import get_dnsserver_list
-from proxylib import AuthFilter
-from proxylib import AdvancedProxyHandler
-from proxylib import BlackholeFilter
-from proxylib import UserAgentFilter
-from proxylib import URLRewriteFilter
-from proxylib import BaseProxyHandlerFilter
-from proxylib import CipherFileObject
-from proxylib import RC4Cipher
-from proxylib import FakeHttpsFilter
-from proxylib import ForceHttpsFilter
-from proxylib import StaticFileFilter
-from proxylib import get_process_list
-from proxylib import get_uptime
-from proxylib import LocalProxyServer
-from proxylib import RangeFetch
-from proxylib import spawn_later
-from proxylib import XORCipher
-from proxylib import GreenForwardMixin
-from proxylib import SimpleProxyHandler
-
-
-NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
+NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
 class Logging(type(sys)):
@@ -207,11 +176,42 @@ class Logging(type(sys)):
 logging = sys.modules['logging'] = Logging('logging')
 
 
+from proxylib import LRUCache
+from proxylib import CertUtil
+from proxylib import dnslib_resolve_over_tcp
+from proxylib import dnslib_resolve_over_udp
+from proxylib import dnslib_record2iplist
+from proxylib import SSLConnection
+from proxylib import ProxyUtil
+from proxylib import inflate
+from proxylib import deflate
+from proxylib import get_dnsserver_list
+from proxylib import AuthFilter
+from proxylib import AdvancedProxyHandler
+from proxylib import BlackholeFilter
+from proxylib import UserAgentFilter
+from proxylib import URLRewriteFilter
+from proxylib import BaseProxyHandlerFilter
+from proxylib import CipherFileObject
+from proxylib import RC4Cipher
+from proxylib import FakeHttpsFilter
+from proxylib import ForceHttpsFilter
+from proxylib import StaticFileFilter
+from proxylib import get_process_list
+from proxylib import get_uptime
+from proxylib import LocalProxyServer
+from proxylib import RangeFetch
+from proxylib import spawn_later
+from proxylib import XORCipher
+from proxylib import GreenForwardMixin
+from proxylib import SimpleProxyHandler
+
+
 def is_google_ip(ipaddr):
     return ipaddr.startswith(('173.194.', '207.126.', '209.85.', '216.239.', '64.18.', '64.233.', '66.102.', '66.249.', '72.14.', '74.125.'))
 
 
-class URLFetch(object):
+class MyURLFetch(object):
     """URLFetch for gae/php fetchservers"""
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
 
@@ -453,7 +453,6 @@ class Common(object):
         self.PHP_CRLF = self.CONFIG.getint('php', 'crlf') if self.CONFIG.has_option('php', 'crlf') else 1
         self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
         self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
-        self.PHP_USEHOSTS = self.CONFIG.getint('php', 'usehosts')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
@@ -763,6 +762,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 class GAEProxyHandler(AdvancedProxyHandler):
     """GAE Proxy Handler"""
     handler_filters = [GAEFetchFilter()]
+    urlfetch_class = MyURLFetch
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
