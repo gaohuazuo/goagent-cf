@@ -35,7 +35,7 @@ import urlparse
 import OpenSSL
 import dnslib
 
-
+gevent = sys.modules.get('gevent', None)
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
@@ -696,6 +696,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
     sticky_filter = None
+    urlfetch_class = URLFetch
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -811,7 +812,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return response
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
-        return URLFetch(fetchserver, self.create_http_request).fetch(method, url, headers, body, timeout, **kwargs)
+        return self.urlfetch_class(fetchserver, self.create_http_request).fetch(method, url, headers, body, timeout, **kwargs)
 
     def handle_urlfetch_error(self, fetchserver, response):
         pass
@@ -1374,7 +1375,10 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             else:
                 addresses.sort(key=self.tcp_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, window)
-            queobj = gevent.queue.Queue() if gevent else Queue.Queue()
+            if 'gevent' in sys.modules:
+                queobj = __import__('gevent.queue', fromlist=['.']).Queue()
+            else:
+                queobj = Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
@@ -1998,7 +2002,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
                        'Connection': 'close'}
             content = ''
-            if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png','.jpeg', '.bmp')):
+            if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png', '.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
             return [handler.MOCK, 200, headers, content]
