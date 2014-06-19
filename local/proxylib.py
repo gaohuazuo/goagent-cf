@@ -837,7 +837,7 @@ class AbstractFetchPlugin(object):
     def create_http_request(self, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
-    def handle(self, handler, **kwargs):
+    def handle(self, handler, *args, **kwargs):
         raise NotImplementedError
 
 
@@ -881,11 +881,8 @@ class BaseFetchPlugin(AbstractFetchPlugin):
 
 class MockFetchPlugin(BaseFetchPlugin):
     """mock fetch plugin"""
-    def handle(self, handler, **kwargs):
+    def handle(self, handler, status, headers, body):
         """mock response"""
-        status = kwargs.get('status') or 200
-        headers = kwargs.get('headers') or {}
-        body = kwargs.get('body') or ''
         logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
         headers = dict((k.title(), v) for k, v in headers.items())
         if 'Transfer-Encoding' in headers:
@@ -1343,11 +1340,10 @@ class AdvancedFetchPlugin(BaseFetchPlugin):
         return response
 
 
-class StripSSLPlugin(BaseFetchPlugin):
+class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
-    def handle(self, handler, **kwargs):
+    def handle(self, handler, do_ssl_handshake):
         """strip connect"""
-        do_ssl_handshake = kwargs.get('do_ssl_handshake', False)
         certfile = CertUtil.get_cert(handler.host)
         logging.info('%s "STRIP %s %s:%d %s" - -', handler.address_string(), handler.command, handler.host, handler.port, handler.protocol_version)
         handler.send_response(200)
@@ -1388,13 +1384,13 @@ class StripSSLPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(AdvancedFetchPlugin):
     """direct fetch plugin"""
-    def handle(self, handler, **kwargs):
+    def handle(self, handler, *args, **kwargs):
         if handler.command != 'CONNECT':
-            return self.handle_method(handler, **kwargs)
+            return self.handle_method(handler, *args, **kwargs)
         else:
-            return self.handle_connect(handler, **kwargs)
+            return self.handle_connect(handler, *args, **kwargs)
 
-    def handle_method(self, handler, **kwargs):
+    def handle_method(self, handler, *args, **kwargs):
         method = handler.command
         if handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = handler.path
@@ -1436,7 +1432,7 @@ class DirectFetchPlugin(AdvancedFetchPlugin):
             if response:
                 response.close()
 
-    def handle_connect(self, handler, **kwargs):
+    def handle_connect(self, handler, *args, **kwargs):
         """forward socket"""
         host = handler.host
         port = handler.port
@@ -1518,7 +1514,7 @@ class AuthFilter(BaseProxyHandlerFilter):
                        'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
                        'Content-Length': '0',
                        'Connection': 'keep-alive'}
-            return [handler.MOCK, 407, headers, '']
+            return 'mock', 407, headers, ''
 
 
 class UserAgentFilter(BaseProxyHandlerFilter):
@@ -1541,7 +1537,7 @@ class ForceHttpsFilter(BaseProxyHandlerFilter):
             if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
                 logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
                 headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
-                return [handler.MOCK, 301, headers, '']
+                return 'mock', 301, headers, ''
 
 
 class FakeHttpsFilter(BaseProxyHandlerFilter):
@@ -1553,8 +1549,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
-            return [handler.STRIP, True, None]
-
+            return 'strip', True
 
 
 class URLRewriteFilter(BaseProxyHandlerFilter):
@@ -1570,7 +1565,7 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
             if m:
                 logging.debug('URLRewriteFilter metched %r', handler.path)
                 headers = {'Location': callback(m), 'Connection': 'close'}
-                return [handler.MOCK, 301, headers, '']
+                return 'mock', 301, headers, ''
 
 
 class StaticFileFilter(BaseProxyHandlerFilter):
@@ -1608,7 +1603,7 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 if not os.path.isfile(index_file):
                     content = self.format_index_html(path).encode('UTF-8')
                     headers = {'Content-Type': 'text/html; charset=utf-8', 'Connection': 'close'}
-                    return [handler.MOCK, 200, headers, content]
+                    return 'mock', 200, headers, content
                 else:
                     path = index_file
             if os.path.isfile(path):
@@ -1621,7 +1616,7 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 with open(path, 'rb') as fp:
                     content = fp.read()
                     headers = {'Connection': 'close', 'Content-Type': content_type}
-                    return [handler.MOCK, 200, headers, content]
+                    return 'mock', 200, headers, content
 
 
 class BlackholeFilter(BaseProxyHandlerFilter):
@@ -1630,7 +1625,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIP, True, self]
+            return 'strip', True
         elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
@@ -1639,9 +1634,9 @@ class BlackholeFilter(BaseProxyHandlerFilter):
             if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png', '.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
-            return [handler.MOCK, 200, headers, content]
+            return 'mock', 200, headers, content
         else:
-            return [handler.MOCK, 404, {'Connection': 'close'}, '']
+            return 'mock', 404, {'Connection': 'close'}, ''
 
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
