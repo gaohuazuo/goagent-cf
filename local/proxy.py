@@ -185,7 +185,6 @@ from proxylib import deflate
 from proxylib import get_dnsserver_list
 from proxylib import spawn_later
 from proxylib import AuthFilter
-from proxylib import AdvancedProxyHandler
 from proxylib import BlackholeFilter
 from proxylib import UserAgentFilter
 from proxylib import URLRewriteFilter
@@ -198,7 +197,6 @@ from proxylib import StaticFileFilter
 from proxylib import get_process_list
 from proxylib import get_uptime
 from proxylib import LocalProxyServer
-from proxylib import RangeFetch
 from proxylib import XORCipher
 from proxylib import SimpleProxyHandler
 
@@ -483,284 +481,6 @@ class MyURLFetch(object):
         return response
 
 
-class Common(object):
-    """Global Config Object"""
-
-    ENV_CONFIG_PREFIX = 'GOAGENT_'
-
-    def __init__(self):
-        """load config from proxy.ini"""
-        ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
-        self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
-        self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
-        self.CONFIG.read([self.CONFIG_FILENAME, self.CONFIG_USER_FILENAME])
-
-        for key, value in os.environ.items():
-            m = re.match(r'^%s([A-Z]+)_([A-Z\_\-]+)$' % self.ENV_CONFIG_PREFIX, key)
-            if m:
-                self.CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
-
-        self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
-        self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
-        self.LISTEN_USERNAME = self.CONFIG.get('listen', 'username') if self.CONFIG.has_option('listen', 'username') else ''
-        self.LISTEN_PASSWORD = self.CONFIG.get('listen', 'password') if self.CONFIG.has_option('listen', 'password') else ''
-        self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
-        self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
-
-        self.GAE_ENABLE = self.CONFIG.getint('gae', 'enable')
-        self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
-        self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
-        self.GAE_PATH = self.CONFIG.get('gae', 'path')
-        self.GAE_MODE = self.CONFIG.get('gae', 'mode')
-        self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
-        self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
-        self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive') if self.CONFIG.has_option('gae', 'keepalive') else 0
-        self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
-        self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
-        self.GAE_TRANSPORT = self.CONFIG.getint('gae', 'transport') if self.CONFIG.has_option('gae', 'transport') else 0
-        self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
-        self.GAE_REGIONS = set(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
-        self.GAE_SSLVERSION = self.CONFIG.get('gae', 'sslversion')
-        self.GAE_PAGESPEED = self.CONFIG.getint('gae', 'pagespeed') if self.CONFIG.has_option('gae', 'pagespeed') else 0
-
-        if self.GAE_PROFILE == 'auto':
-            try:
-                socket.create_connection(('2001:4860:4860::8888', 53), timeout=1).close()
-                logging.info('Use profile ipv6')
-                self.GAE_PROFILE = 'ipv6'
-            except socket.error as e:
-                logging.info('Fail try profile ipv6 %r, fallback ipv4', e)
-                self.GAE_PROFILE = 'ipv4'
-
-        if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
-            self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
-
-        host_map = collections.OrderedDict()
-        host_postfix_map = collections.OrderedDict()
-        hostport_map = collections.OrderedDict()
-        hostport_postfix_map = collections.OrderedDict()
-        urlre_map = collections.OrderedDict()
-        withgae_sites = []
-        crlf_sites = []
-        forcehttps_sites = []
-        noforcehttps_sites = []
-        fakehttps_sites = []
-        nofakehttps_sites = []
-        dns_servers = []
-
-        for site, rule in self.CONFIG.items('profile/%s' % self.GAE_PROFILE):
-            rules = [x.strip() for x in re.split(r'[,\|]', rule) if x.strip()]
-            if site == 'dns':
-                dns_servers = rules
-                continue
-            for name, sites in [('withgae', withgae_sites),
-                                ('crlf', crlf_sites),
-                                ('forcehttps', forcehttps_sites),
-                                ('noforcehttps', noforcehttps_sites),
-                                ('fakehttps', fakehttps_sites),
-                                ('nofakehttps', nofakehttps_sites)]:
-                if name in rules:
-                    sites.append(site)
-                    rules.remove(name)
-            hostname = rules and rules[0]
-            if not hostname:
-                continue
-            if hostname == 'direct':
-                hostname = ''
-            if ':' in site and '\\' not in site:
-                if site.startswith('.'):
-                    hostport_postfix_map[site] = hostname
-                else:
-                    hostport_map[site] = hostname
-            elif '\\' in site:
-                urlre_map[re.compile(site).match] = hostname
-            else:
-                if site.startswith('.'):
-                    host_postfix_map[site] = hostname
-                else:
-                    host_map[site] = hostname
-
-        self.HTTP_DNS = dns_servers
-        self.WITHGAE_SITES = set(withgae_sites)
-        self.CRLF_SITES = tuple(crlf_sites)
-        self.FORCEHTTPS_SITES = tuple(forcehttps_sites)
-        self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
-        self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
-        self.NOFAKEHTTPS_SITES = set(nofakehttps_sites)
-        self.HOSTPORT_MAP = hostport_map
-        self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
-        self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
-        self.URLRE_MAP = urlre_map
-        self.HOST_MAP = host_map
-        self.HOST_POSTFIX_MAP = host_postfix_map
-        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
-
-        self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
-        self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
-
-        self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
-        self.PAC_IP = self.CONFIG.get('pac', 'ip')
-        self.PAC_PORT = self.CONFIG.getint('pac', 'port')
-        self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
-        self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
-        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock')
-        self.PAC_ADMODE = self.CONFIG.getint('pac', 'admode')
-        self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
-
-        self.PHP_ENABLE = self.CONFIG.getint('php', 'enable')
-        self.PHP_LISTEN = self.CONFIG.get('php', 'listen')
-        self.PHP_PASSWORD = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
-        self.PHP_CRLF = self.CONFIG.getint('php', 'crlf') if self.CONFIG.has_option('php', 'crlf') else 1
-        self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
-        self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
-
-        self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
-        self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
-        self.PROXY_HOST = self.CONFIG.get('proxy', 'host')
-        self.PROXY_PORT = self.CONFIG.getint('proxy', 'port')
-        self.PROXY_USERNAME = self.CONFIG.get('proxy', 'username')
-        self.PROXY_PASSWROD = self.CONFIG.get('proxy', 'password')
-
-        if not self.PROXY_ENABLE and self.PROXY_AUTODETECT:
-            system_proxy = ProxyUtil.get_system_proxy()
-            if system_proxy and self.LISTEN_IP not in system_proxy:
-                _, username, password, address = ProxyUtil.parse_proxy(system_proxy)
-                proxyhost, _, proxyport = address.rpartition(':')
-                self.PROXY_ENABLE = 1
-                self.PROXY_USERNAME = username
-                self.PROXY_PASSWROD = password
-                self.PROXY_HOST = proxyhost
-                self.PROXY_PORT = int(proxyport)
-        if self.PROXY_ENABLE:
-            self.GAE_MODE = 'https'
-
-        self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
-        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in self.AUTORANGE_HOSTS]
-        self.AUTORANGE_ENDSWITH = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
-        self.AUTORANGE_NOENDSWITH = tuple(self.CONFIG.get('autorange', 'noendswith').split('|'))
-        self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
-        self.AUTORANGE_WAITSIZE = self.CONFIG.getint('autorange', 'waitsize')
-        self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
-        self.AUTORANGE_THREADS = self.CONFIG.getint('autorange', 'threads')
-
-        self.FETCHMAX_LOCAL = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
-        self.FETCHMAX_SERVER = self.CONFIG.get('fetchmax', 'server')
-
-        self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
-        self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
-        self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
-        self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
-        self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|')) if self.CONFIG.get('dns', 'tcpover').strip() else tuple()
-
-        self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
-        self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
-
-        self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
-        self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
-
-    def extend_iplist(self, iplist_name, hosts):
-        logging.info('extend_iplist start for hosts=%s', hosts)
-        new_iplist = []
-        def do_remote_resolve(host, dnsserver, queue):
-            assert isinstance(dnsserver, basestring)
-            for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
-                try:
-                    time.sleep(random.random())
-                    iplist = dnslib_record2iplist(dnslib_resolve(host, [dnsserver], timeout=4, blacklist=self.DNS_BLACKLIST))
-                    queue.put((host, dnsserver, iplist))
-                except (socket.error, OSError) as e:
-                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
-                    time.sleep(1)
-        result_queue = Queue.Queue()
-        for host in hosts:
-            for dnsserver in self.DNS_SERVERS:
-                logging.debug('remote resolve host=%r from dnsserver=%r', host, dnsserver)
-                thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
-        for _ in xrange(len(self.DNS_SERVERS) * len(hosts) * 2):
-            try:
-                host, dnsserver, iplist = result_queue.get(timeout=16)
-                logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
-                if host.endswith('.google.com'):
-                    iplist = [x for x in iplist if is_google_ip(x)]
-                new_iplist += iplist
-            except Queue.Empty:
-                break
-        logging.info('extend_iplist finished, added %s', len(set(self.IPLIST_MAP[iplist_name])-set(new_iplist)))
-        self.IPLIST_MAP[iplist_name] = list(set(self.IPLIST_MAP[iplist_name] + new_iplist))
-
-    def resolve_iplist(self):
-        # https://support.google.com/websearch/answer/186669?hl=zh-Hans
-        def do_local_resolve(host, queue):
-            assert isinstance(host, basestring)
-            for _ in xrange(3):
-                try:
-                    queue.put((host, socket.gethostbyname_ex(host)[-1]))
-                except (socket.error, OSError) as e:
-                    logging.warning('socket.gethostbyname_ex host=%r failed: %s', host, e)
-                    time.sleep(0.1)
-        google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
-        for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
-            if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
-                continue
-            need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
-            resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
-            result_queue = Queue.Queue()
-            for host in need_resolve_remote:
-                logging.debug('local resolve host=%r', host)
-                thread.start_new_thread(do_local_resolve, (host, result_queue))
-            for _ in xrange(len(need_resolve_remote)):
-                try:
-                    host, iplist = result_queue.get(timeout=8)
-                    if host.endswith('.google.com'):
-                        iplist = [x for x in iplist if is_google_ip(x)]
-                    resolved_iplist += iplist
-                except Queue.Empty:
-                    break
-            if name == 'google_hk':
-                for delay in (1, 60, 150, 240, 300, 450, 600, 900):
-                    spawn_later(delay, self.extend_iplist, name, need_resolve_remote)
-            if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
-                iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
-                resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
-            else:
-                resolved_iplist = list(set(resolved_iplist))
-            if name.startswith('google_'):
-                resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
-            if len(resolved_iplist) == 0:
-                logging.error('resolve %s host return empty! please retry!', name)
-                sys.exit(-1)
-            logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
-            common.IPLIST_MAP[name] = resolved_iplist
-
-    def info(self):
-        info = ''
-        info += '------------------------------------------------------\n'
-        info += 'GoAgent Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version[:5], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
-        info += 'Uvent Version      : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
-        info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
-        info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
-        info += 'GAE Mode           : %s\n' % self.GAE_MODE
-        info += 'GAE Profile        : %s\n' % self.GAE_PROFILE if self.GAE_PROFILE else ''
-        info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
-        info += 'GAE Validate       : %s\n' % self.GAE_VALIDATE if self.GAE_VALIDATE else ''
-        info += 'GAE Obfuscate      : %s\n' % self.GAE_OBFUSCATE if self.GAE_OBFUSCATE else ''
-        if common.PAC_ENABLE:
-            info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP if self.PAC_IP and self.PAC_IP != '0.0.0.0' else ProxyUtil.get_listen_ip(), self.PAC_PORT, self.PAC_FILE)
-            info += 'Pac File           : file://%s\n' % os.path.abspath(self.PAC_FILE)
-        if common.PHP_ENABLE:
-            info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
-            info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
-        if common.DNS_ENABLE:
-            info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
-            info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_SERVERS)
-        info += '------------------------------------------------------\n'
-        return info
-
-common = Common()
-
-
 class WithGAEFilter(BaseProxyHandlerFilter):
     """with gae filter"""
     def __init__(self, withgae_sites):
@@ -987,36 +707,7 @@ class PHPProxyHandler(AdvancedProxyHandler):
         return True
 
 
-class ProxyChainMixin:
-    """proxy chain mixin"""
 
-    def gethostbyname2(self, hostname):
-        try:
-            return socket.gethostbyname_ex(hostname)[-1]
-        except socket.error:
-            return [hostname]
-
-    def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        sock = socket.create_connection((common.PROXY_HOST, int(common.PROXY_PORT)))
-        if hostname.endswith('.appspot.com'):
-            hostname = 'www.google.com'
-        request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
-        if common.PROXY_USERNAME and common.PROXY_PASSWROD:
-            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (common.PROXY_USERNAME, common.PROXY_PASSWROD)).encode()).decode().strip()
-        request_data += '\r\n'
-        sock.sendall(request_data)
-        response = httplib.HTTPResponse(sock)
-        response.fp.close()
-        response.fp = sock.makefile('rb', 0)
-        response.begin()
-        if response.status >= 400:
-            raise httplib.BadStatusLine('%s %s %s' % (response.version, response.status, response.reason))
-        return sock
-
-    def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-        ssl_sock = ssl.wrap_socket(sock)
-        return ssl_sock
 
 
 class ProxyChainGAEProxyHandler(ProxyChainMixin, GAEProxyHandler):
@@ -1395,6 +1086,284 @@ class PacFileFilter(BaseProxyHandlerFilter):
 class PACProxyHandler(SimpleProxyHandler):
     """pac proxy handler"""
     handler_filters = [PacFileFilter(), StaticFileFilter(), BlackholeFilter()]
+
+
+class Common(object):
+    """Global Config Object"""
+
+    ENV_CONFIG_PREFIX = 'GOAGENT_'
+
+    def __init__(self):
+        """load config from proxy.ini"""
+        ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+        self.CONFIG = ConfigParser.ConfigParser()
+        self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
+        self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
+        self.CONFIG.read([self.CONFIG_FILENAME, self.CONFIG_USER_FILENAME])
+
+        for key, value in os.environ.items():
+            m = re.match(r'^%s([A-Z]+)_([A-Z\_\-]+)$' % self.ENV_CONFIG_PREFIX, key)
+            if m:
+                self.CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
+
+        self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
+        self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
+        self.LISTEN_USERNAME = self.CONFIG.get('listen', 'username') if self.CONFIG.has_option('listen', 'username') else ''
+        self.LISTEN_PASSWORD = self.CONFIG.get('listen', 'password') if self.CONFIG.has_option('listen', 'password') else ''
+        self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
+        self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
+
+        self.GAE_ENABLE = self.CONFIG.getint('gae', 'enable')
+        self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
+        self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
+        self.GAE_PATH = self.CONFIG.get('gae', 'path')
+        self.GAE_MODE = self.CONFIG.get('gae', 'mode')
+        self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
+        self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
+        self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive') if self.CONFIG.has_option('gae', 'keepalive') else 0
+        self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
+        self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
+        self.GAE_TRANSPORT = self.CONFIG.getint('gae', 'transport') if self.CONFIG.has_option('gae', 'transport') else 0
+        self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
+        self.GAE_REGIONS = set(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
+        self.GAE_SSLVERSION = self.CONFIG.get('gae', 'sslversion')
+        self.GAE_PAGESPEED = self.CONFIG.getint('gae', 'pagespeed') if self.CONFIG.has_option('gae', 'pagespeed') else 0
+
+        if self.GAE_PROFILE == 'auto':
+            try:
+                socket.create_connection(('2001:4860:4860::8888', 53), timeout=1).close()
+                logging.info('Use profile ipv6')
+                self.GAE_PROFILE = 'ipv6'
+            except socket.error as e:
+                logging.info('Fail try profile ipv6 %r, fallback ipv4', e)
+                self.GAE_PROFILE = 'ipv4'
+
+        if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
+            self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
+
+        host_map = collections.OrderedDict()
+        host_postfix_map = collections.OrderedDict()
+        hostport_map = collections.OrderedDict()
+        hostport_postfix_map = collections.OrderedDict()
+        urlre_map = collections.OrderedDict()
+        withgae_sites = []
+        crlf_sites = []
+        forcehttps_sites = []
+        noforcehttps_sites = []
+        fakehttps_sites = []
+        nofakehttps_sites = []
+        dns_servers = []
+
+        for site, rule in self.CONFIG.items('profile/%s' % self.GAE_PROFILE):
+            rules = [x.strip() for x in re.split(r'[,\|]', rule) if x.strip()]
+            if site == 'dns':
+                dns_servers = rules
+                continue
+            for name, sites in [('withgae', withgae_sites),
+                                ('crlf', crlf_sites),
+                                ('forcehttps', forcehttps_sites),
+                                ('noforcehttps', noforcehttps_sites),
+                                ('fakehttps', fakehttps_sites),
+                                ('nofakehttps', nofakehttps_sites)]:
+                if name in rules:
+                    sites.append(site)
+                    rules.remove(name)
+            hostname = rules and rules[0]
+            if not hostname:
+                continue
+            if hostname == 'direct':
+                hostname = ''
+            if ':' in site and '\\' not in site:
+                if site.startswith('.'):
+                    hostport_postfix_map[site] = hostname
+                else:
+                    hostport_map[site] = hostname
+            elif '\\' in site:
+                urlre_map[re.compile(site).match] = hostname
+            else:
+                if site.startswith('.'):
+                    host_postfix_map[site] = hostname
+                else:
+                    host_map[site] = hostname
+
+        self.HTTP_DNS = dns_servers
+        self.WITHGAE_SITES = set(withgae_sites)
+        self.CRLF_SITES = tuple(crlf_sites)
+        self.FORCEHTTPS_SITES = tuple(forcehttps_sites)
+        self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
+        self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
+        self.NOFAKEHTTPS_SITES = set(nofakehttps_sites)
+        self.HOSTPORT_MAP = hostport_map
+        self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
+        self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
+        self.URLRE_MAP = urlre_map
+        self.HOST_MAP = host_map
+        self.HOST_POSTFIX_MAP = host_postfix_map
+        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
+
+        self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
+        self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
+
+        self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
+        self.PAC_IP = self.CONFIG.get('pac', 'ip')
+        self.PAC_PORT = self.CONFIG.getint('pac', 'port')
+        self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
+        self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
+        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock')
+        self.PAC_ADMODE = self.CONFIG.getint('pac', 'admode')
+        self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
+
+        self.PHP_ENABLE = self.CONFIG.getint('php', 'enable')
+        self.PHP_LISTEN = self.CONFIG.get('php', 'listen')
+        self.PHP_PASSWORD = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
+        self.PHP_CRLF = self.CONFIG.getint('php', 'crlf') if self.CONFIG.has_option('php', 'crlf') else 1
+        self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
+        self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
+
+        self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
+        self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
+        self.PROXY_HOST = self.CONFIG.get('proxy', 'host')
+        self.PROXY_PORT = self.CONFIG.getint('proxy', 'port')
+        self.PROXY_USERNAME = self.CONFIG.get('proxy', 'username')
+        self.PROXY_PASSWROD = self.CONFIG.get('proxy', 'password')
+
+        if not self.PROXY_ENABLE and self.PROXY_AUTODETECT:
+            system_proxy = ProxyUtil.get_system_proxy()
+            if system_proxy and self.LISTEN_IP not in system_proxy:
+                _, username, password, address = ProxyUtil.parse_proxy(system_proxy)
+                proxyhost, _, proxyport = address.rpartition(':')
+                self.PROXY_ENABLE = 1
+                self.PROXY_USERNAME = username
+                self.PROXY_PASSWROD = password
+                self.PROXY_HOST = proxyhost
+                self.PROXY_PORT = int(proxyport)
+        if self.PROXY_ENABLE:
+            self.GAE_MODE = 'https'
+
+        self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
+        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in self.AUTORANGE_HOSTS]
+        self.AUTORANGE_ENDSWITH = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_NOENDSWITH = tuple(self.CONFIG.get('autorange', 'noendswith').split('|'))
+        self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
+        self.AUTORANGE_WAITSIZE = self.CONFIG.getint('autorange', 'waitsize')
+        self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
+        self.AUTORANGE_THREADS = self.CONFIG.getint('autorange', 'threads')
+
+        self.FETCHMAX_LOCAL = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
+        self.FETCHMAX_SERVER = self.CONFIG.get('fetchmax', 'server')
+
+        self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
+        self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
+        self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
+        self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
+        self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|')) if self.CONFIG.get('dns', 'tcpover').strip() else tuple()
+
+        self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
+        self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
+
+        self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
+        self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
+
+    def extend_iplist(self, iplist_name, hosts):
+        logging.info('extend_iplist start for hosts=%s', hosts)
+        new_iplist = []
+        def do_remote_resolve(host, dnsserver, queue):
+            assert isinstance(dnsserver, basestring)
+            for dnslib_resolve in (dnslib_resolve_over_udp, dnslib_resolve_over_tcp):
+                try:
+                    time.sleep(random.random())
+                    iplist = dnslib_record2iplist(dnslib_resolve(host, [dnsserver], timeout=4, blacklist=self.DNS_BLACKLIST))
+                    queue.put((host, dnsserver, iplist))
+                except (socket.error, OSError) as e:
+                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
+                    time.sleep(1)
+        result_queue = Queue.Queue()
+        for host in hosts:
+            for dnsserver in self.DNS_SERVERS:
+                logging.debug('remote resolve host=%r from dnsserver=%r', host, dnsserver)
+                thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
+        for _ in xrange(len(self.DNS_SERVERS) * len(hosts) * 2):
+            try:
+                host, dnsserver, iplist = result_queue.get(timeout=16)
+                logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
+                if host.endswith('.google.com'):
+                    iplist = [x for x in iplist if is_google_ip(x)]
+                new_iplist += iplist
+            except Queue.Empty:
+                break
+        logging.info('extend_iplist finished, added %s', len(set(self.IPLIST_MAP[iplist_name])-set(new_iplist)))
+        self.IPLIST_MAP[iplist_name] = list(set(self.IPLIST_MAP[iplist_name] + new_iplist))
+
+    def resolve_iplist(self):
+        # https://support.google.com/websearch/answer/186669?hl=zh-Hans
+        def do_local_resolve(host, queue):
+            assert isinstance(host, basestring)
+            for _ in xrange(3):
+                try:
+                    queue.put((host, socket.gethostbyname_ex(host)[-1]))
+                except (socket.error, OSError) as e:
+                    logging.warning('socket.gethostbyname_ex host=%r failed: %s', host, e)
+                    time.sleep(0.1)
+        google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
+        for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
+            if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
+                continue
+            need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
+            resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
+            result_queue = Queue.Queue()
+            for host in need_resolve_remote:
+                logging.debug('local resolve host=%r', host)
+                thread.start_new_thread(do_local_resolve, (host, result_queue))
+            for _ in xrange(len(need_resolve_remote)):
+                try:
+                    host, iplist = result_queue.get(timeout=8)
+                    if host.endswith('.google.com'):
+                        iplist = [x for x in iplist if is_google_ip(x)]
+                    resolved_iplist += iplist
+                except Queue.Empty:
+                    break
+            if name == 'google_hk':
+                for delay in (1, 60, 150, 240, 300, 450, 600, 900):
+                    spawn_later(delay, self.extend_iplist, name, need_resolve_remote)
+            if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
+                iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
+                resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
+            else:
+                resolved_iplist = list(set(resolved_iplist))
+            if name.startswith('google_'):
+                resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
+            if len(resolved_iplist) == 0:
+                logging.error('resolve %s host return empty! please retry!', name)
+                sys.exit(-1)
+            logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
+            common.IPLIST_MAP[name] = resolved_iplist
+
+    def info(self):
+        info = ''
+        info += '------------------------------------------------------\n'
+        info += 'GoAgent Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version[:5], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
+        info += 'Uvent Version      : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
+        info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
+        info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
+        info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
+        info += 'GAE Mode           : %s\n' % self.GAE_MODE
+        info += 'GAE Profile        : %s\n' % self.GAE_PROFILE if self.GAE_PROFILE else ''
+        info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
+        info += 'GAE Validate       : %s\n' % self.GAE_VALIDATE if self.GAE_VALIDATE else ''
+        info += 'GAE Obfuscate      : %s\n' % self.GAE_OBFUSCATE if self.GAE_OBFUSCATE else ''
+        if common.PAC_ENABLE:
+            info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP if self.PAC_IP and self.PAC_IP != '0.0.0.0' else ProxyUtil.get_listen_ip(), self.PAC_PORT, self.PAC_FILE)
+            info += 'Pac File           : file://%s\n' % os.path.abspath(self.PAC_FILE)
+        if common.PHP_ENABLE:
+            info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
+            info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
+        if common.DNS_ENABLE:
+            info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
+            info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_SERVERS)
+        info += '------------------------------------------------------\n'
+        return info
+
+common = Common()
 
 
 def pre_start():
