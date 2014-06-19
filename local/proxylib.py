@@ -820,8 +820,8 @@ def deprecated_forward_socket(local, remote, timeout, bufsize):
                 pass
 
 
-class AbstractFetchPlugin(object):
-    """abstract fetch plugin"""
+class BaseNet(object):
+    """base net util"""
     def __init__(self, *args, **kwargs):
         pass
 
@@ -837,15 +837,9 @@ class AbstractFetchPlugin(object):
     def create_http_request(self, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
-    def handle(self, handler, *args, **kwargs):
-        raise NotImplementedError
 
-
-class BaseFetchPlugin(AbstractFetchPlugin):
-    """base fetch plugin"""
-    def __init__(self, *args, **kwargs):
-        AbstractFetchPlugin.__init__(self, *args, **kwargs)
-
+class SimpleNet(BaseNet):
+    """simple net util"""
     def gethostbyname2(self, hostname):
         return socket.gethostbyname_ex(hostname)[-1]
 
@@ -879,27 +873,8 @@ class BaseFetchPlugin(AbstractFetchPlugin):
         return response
 
 
-class MockFetchPlugin(BaseFetchPlugin):
-    """mock fetch plugin"""
-    def handle(self, handler, status, headers, body):
-        """mock response"""
-        logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
-        headers = dict((k.title(), v) for k, v in headers.items())
-        if 'Transfer-Encoding' in headers:
-            del headers['Transfer-Encoding']
-        if 'Content-Length' not in headers:
-            headers['Content-Length'] = len(body)
-        if 'Connection' not in headers:
-            headers['Connection'] = 'close'
-        handler.send_response(status)
-        for key, value in headers.items():
-            handler.send_header(key, value)
-        handler.end_headers()
-        handler.wfile.write(body)
-
-
-class AdvancedFetchPlugin(BaseFetchPlugin):
-    """advanced fetch plugin"""
+class AdvancedNet(BaseNet):
+    """advanced net util"""
     dns_cache = LRUCache(64*1024)
     dns_servers = []
     dns_blacklist = []
@@ -1340,6 +1315,79 @@ class AdvancedFetchPlugin(BaseFetchPlugin):
         return response
 
 
+class ProxyNetMixin:
+    """proxy net util"""
+    def __init__(self, host, port, username='', password=''):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+
+    def gethostbyname2(self, hostname):
+        try:
+            return socket.gethostbyname_ex(hostname)[-1]
+        except socket.error:
+            return [hostname]
+
+    def create_tcp_connection(self, hostname, port, timeout, **kwargs):
+        sock = socket.create_connection((self.host, int(self.port)))
+        if hostname.endswith('.appspot.com'):
+            hostname = 'www.google.com'
+        request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
+        if self.username and self.password:
+            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (self.username, self.password)).encode()).decode().strip()
+        request_data += '\r\n'
+        sock.sendall(request_data)
+        response = httplib.HTTPResponse(sock)
+        response.fp.close()
+        response.fp = sock.makefile('rb', 0)
+        response.begin()
+        if response.status >= 400:
+            raise httplib.BadStatusLine('%s %s %s' % (response.version, response.status, response.reason))
+        return sock
+
+    def create_ssl_connection(self, hostname, port, timeout, **kwargs):
+        sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
+        ssl_sock = ssl.wrap_socket(sock)
+        return ssl_sock
+
+
+class SimpleProxyNet(ProxyNetMixin, SimpleNet):
+    pass
+
+
+class AdvancedProxyNet(ProxyNetMixin, AdvancedNet):
+    pass
+
+
+class BaseFetchPlugin(object):
+    """abstract fetch plugin"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def handle(self, handler, *args, **kwargs):
+        raise NotImplementedError
+
+
+class MockFetchPlugin(BaseFetchPlugin):
+    """mock fetch plugin"""
+    def handle(self, handler, status, headers, body):
+        """mock response"""
+        logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
+        headers = dict((k.title(), v) for k, v in headers.items())
+        if 'Transfer-Encoding' in headers:
+            del headers['Transfer-Encoding']
+        if 'Content-Length' not in headers:
+            headers['Content-Length'] = len(body)
+        if 'Connection' not in headers:
+            headers['Connection'] = 'close'
+        handler.send_response(status)
+        for key, value in headers.items():
+            handler.send_header(key, value)
+        handler.end_headers()
+        handler.wfile.write(body)
+
+
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
     def handle(self, handler, do_ssl_handshake):
@@ -1382,8 +1430,10 @@ class StripPlugin(BaseFetchPlugin):
                 raise
 
 
-class DirectFetchPlugin(AdvancedFetchPlugin):
+class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
+    net = AdvancedNet()
+
     def handle(self, handler, *args, **kwargs):
         if handler.command != 'CONNECT':
             return self.handle_method(handler, *args, **kwargs)
@@ -1400,7 +1450,7 @@ class DirectFetchPlugin(AdvancedFetchPlugin):
         body = handler.body
         response = None
         try:
-            response = self.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
+            response = self.net.create_http_request(method, url, headers, body, timeout=self.net.connect_timeout, **kwargs)
             logging.info('%s "FORWARD %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
             handler.send_response(response.status)
@@ -1451,7 +1501,7 @@ class DirectFetchPlugin(AdvancedFetchPlugin):
         max_retry = kwargs.get('max_retry', 3)
         for i in xrange(max_retry):
             try:
-                remote = self.create_tcp_connection(host, port, self.connect_timeout, **kwargs)
+                remote = self.net.create_tcp_connection(host, port, self.net.connect_timeout, **kwargs)
                 if not data_is_clienthello and remote and not isinstance(remote, Exception):
                     remote.sendall(data)
                 break
@@ -1470,7 +1520,7 @@ class DirectFetchPlugin(AdvancedFetchPlugin):
         if data:
             del remote.data
             local.sendall(data)
-        forward_socket(local, remote, self.max_timeout, bufsize=256*1024)
+        forward_socket(local, remote, self.net.max_timeout, bufsize=256*1024)
 
 
 
