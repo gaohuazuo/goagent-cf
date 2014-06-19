@@ -207,6 +207,171 @@ def is_google_ip(ipaddr):
     return ipaddr.startswith(('173.194.', '207.126.', '209.85.', '216.239.', '64.18.', '64.233.', '66.102.', '66.249.', '72.14.', '74.125.'))
 
 
+class RangeFetch(object):
+    """Range Fetch Class"""
+
+    threads = 2
+    maxsize = 1024*1024*4
+    bufsize = 8192
+    waitsize = 1024*512
+
+    def __init__(self, handler, response, fetchservers, **kwargs):
+        self.handler = handler
+        self.url = handler.path
+        self.response = response
+        self.fetchservers = fetchservers
+        self.kwargs = kwargs
+        self._stopped = None
+        self._last_app_status = {}
+        self.expect_begin = 0
+
+    def fetch(self):
+        response_status = self.response.status
+        response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
+        content_range = response_headers['Content-Range']
+        #content_length = response_headers['Content-Length']
+        start, end, length = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+        if start == 0:
+            response_status = 200
+            response_headers['Content-Length'] = str(length)
+            del response_headers['Content-Range']
+        else:
+            response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, end, length)
+            response_headers['Content-Length'] = str(length-start)
+
+        logging.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
+        self.handler.send_response(response_status)
+        for key, value in response_headers.items():
+            self.handler.send_header(key, value)
+        self.handler.end_headers()
+
+        data_queue = Queue.PriorityQueue()
+        range_queue = Queue.PriorityQueue()
+        range_queue.put((start, end, self.response))
+        self.expect_begin = start
+        for begin in range(end+1, length, self.maxsize):
+            range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
+        for i in xrange(0, self.threads):
+            range_delay_size = i * self.maxsize
+            spawn_later(float(range_delay_size)/self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size)
+        has_peek = hasattr(data_queue, 'peek')
+        peek_timeout = 120
+        while self.expect_begin < length - 1:
+            try:
+                if has_peek:
+                    begin, data = data_queue.peek(timeout=peek_timeout)
+                    if self.expect_begin == begin:
+                        data_queue.get()
+                    elif self.expect_begin < begin:
+                        time.sleep(0.1)
+                        continue
+                    else:
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
+                        break
+                else:
+                    begin, data = data_queue.get(timeout=peek_timeout)
+                    if self.expect_begin == begin:
+                        pass
+                    elif self.expect_begin < begin:
+                        data_queue.put((begin, data))
+                        time.sleep(0.1)
+                        continue
+                    else:
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
+                        break
+            except Queue.Empty:
+                logging.error('data_queue peek timeout, break')
+                break
+            try:
+                self.handler.wfile.write(data)
+                self.expect_begin += len(data)
+                del data
+            except StandardError as e:
+                logging.info('RangeFetch client connection aborted(%s).', e)
+                break
+        self._stopped = True
+
+    def __fetchlet(self, range_queue, data_queue, range_delay_size):
+        headers = dict((k.title(), v) for k, v in self.handler.headers.items())
+        headers['Connection'] = 'close'
+        while 1:
+            try:
+                if self._stopped:
+                    return
+                try:
+                    start, end, response = range_queue.get(timeout=1)
+                    if self.expect_begin < start and data_queue.qsize() * self.bufsize + range_delay_size > 30*1024*1024:
+                        range_queue.put((start, end, response))
+                        time.sleep(10)
+                        continue
+                    headers['Range'] = 'bytes=%d-%d' % (start, end)
+                    fetchserver = ''
+                    if not response:
+                        fetchserver = random.choice(self.fetchservers)
+                        if self._last_app_status.get(fetchserver, 200) >= 500:
+                            time.sleep(5)
+                        response = self.handler.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, **self.kwargs)
+                except Queue.Empty:
+                    continue
+                except StandardError as e:
+                    logging.warning("Response %r in __fetchlet", e)
+                    range_queue.put((start, end, None))
+                    continue
+                if not response:
+                    logging.warning('RangeFetch %s return %r', headers['Range'], response)
+                    range_queue.put((start, end, None))
+                    continue
+                if fetchserver:
+                    self._last_app_status[fetchserver] = response.app_status
+                if response.app_status != 200:
+                    logging.warning('Range Fetch "%s %s" %s return %s', self.handler.command, self.url, headers['Range'], response.app_status)
+                    response.close()
+                    range_queue.put((start, end, None))
+                    continue
+                if response.getheader('Location'):
+                    self.url = urlparse.urljoin(self.url, response.getheader('Location'))
+                    logging.info('RangeFetch Redirect(%r)', self.url)
+                    response.close()
+                    range_queue.put((start, end, None))
+                    continue
+                if 200 <= response.status < 300:
+                    content_range = response.getheader('Content-Range')
+                    if not content_range:
+                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.handler.command, self.url, content_range, response.getheaders())
+                        response.close()
+                        range_queue.put((start, end, None))
+                        continue
+                    content_length = int(response.getheader('Content-Length', 0))
+                    logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', threading.currentThread().ident, content_length, content_range)
+                    while 1:
+                        try:
+                            if self._stopped:
+                                response.close()
+                                return
+                            data = response.read(self.bufsize)
+                            if not data:
+                                break
+                            data_queue.put((start, data))
+                            start += len(data)
+                        except StandardError as e:
+                            logging.warning('RangeFetch "%s %s" %s failed: %s', self.handler.command, self.url, headers['Range'], e)
+                            break
+                    if start < end + 1:
+                        logging.warning('RangeFetch "%s %s" retry %s-%s', self.handler.command, self.url, start, end)
+                        response.close()
+                        range_queue.put((start, end, None))
+                        continue
+                    logging.info('>>>>>>>>>>>>>>> Successfully reached %d bytes.', start - 1)
+                else:
+                    logging.error('RangeFetch %r return %s', self.url, response.status)
+                    response.close()
+                    range_queue.put((start, end, None))
+                    continue
+            except StandardError as e:
+                logging.exception('RangeFetch._fetchlet error:%s', e)
+                raise
+
+
 class MyURLFetch(object):
     """URLFetch for gae/php fetchservers"""
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
