@@ -820,26 +820,37 @@ def deprecated_forward_socket(local, remote, timeout, bufsize):
                 pass
 
 
-class BaseNet(object):
-    """base net util"""
-    def __init__(self, *args, **kwargs):
-        pass
+class LocalProxyServer(SocketServer.ThreadingTCPServer):
+    """Local Proxy Server"""
+    allow_reuse_address = True
+    daemon_threads = True
 
-    def gethostbyname2(self, hostname):
-        raise NotImplementedError
+    def close_request(self, request):
+        try:
+            request.close()
+        except StandardError:
+            pass
 
-    def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        raise NotImplementedError
+    def finish_request(self, request, client_address):
+        try:
+            self.RequestHandlerClass(request, client_address, self)
+        except NetWorkIOError as e:
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
 
-    def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        raise NotImplementedError
+    def handle_error(self, *args):
+        """make ThreadingTCPServer happy"""
+        exc_info = sys.exc_info()
+        error = exc_info and len(exc_info) and exc_info[1]
+        if isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write retry' in error.args[1]:
+            exc_info = error = None
+        else:
+            del exc_info, error
+            SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
-    def create_http_request(self, method, url, headers, body, timeout, **kwargs):
-        raise NotImplementedError
 
-
-class SimpleNet(BaseNet):
-    """simple net util"""
+class BaseHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    """Base HTTP Request Handler"""
     def gethostbyname2(self, hostname):
         return socket.gethostbyname_ex(hostname)[-1]
 
@@ -873,8 +884,469 @@ class SimpleNet(BaseNet):
         return response
 
 
-class AdvancedNet(BaseNet):
-    """advanced net util"""
+
+
+class BaseFetchPlugin(object):
+    """abstract fetch plugin"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def handle(self, handler, *args, **kwargs):
+        raise NotImplementedError
+
+
+class MockFetchPlugin(BaseFetchPlugin):
+    """mock fetch plugin"""
+    def handle(self, handler, status, headers, body):
+        """mock response"""
+        logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
+        headers = dict((k.title(), v) for k, v in headers.items())
+        if 'Transfer-Encoding' in headers:
+            del headers['Transfer-Encoding']
+        if 'Content-Length' not in headers:
+            headers['Content-Length'] = len(body)
+        if 'Connection' not in headers:
+            headers['Connection'] = 'close'
+        handler.send_response(status)
+        for key, value in headers.items():
+            handler.send_header(key, value)
+        handler.end_headers()
+        handler.wfile.write(body)
+
+
+class StripPlugin(BaseFetchPlugin):
+    """strip fetch plugin"""
+    def handle(self, handler, do_ssl_handshake):
+        """strip connect"""
+        certfile = CertUtil.get_cert(handler.host)
+        logging.info('%s "STRIP %s %s:%d %s" - -', handler.address_string(), handler.command, handler.host, handler.port, handler.protocol_version)
+        handler.send_response(200)
+        handler.end_headers()
+        if do_ssl_handshake:
+            try:
+                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
+            except StandardError as e:
+                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                    logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
+                return
+            handler.connection = ssl_sock
+            handler.rfile = handler.connection.makefile('rb', handler.bufsize)
+            handler.wfile = handler.connection.makefile('wb', 0)
+            handler.scheme = 'https'
+        try:
+            handler.raw_requestline = handler.rfile.readline(65537)
+            if len(handler.raw_requestline) > 65536:
+                handler.requestline = ''
+                handler.request_version = ''
+                handler.command = ''
+                handler.send_error(414)
+                return
+            if not handler.raw_requestline:
+                handler.close_connection = 1
+                return
+            if not handler.parse_request():
+                return
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+        try:
+            handler.do_METHOD()
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
+                raise
+
+
+class DirectFetchPlugin(BaseFetchPlugin):
+    """direct fetch plugin"""
+    connect_timeout = 8
+
+    def handle(self, handler, *args, **kwargs):
+        if handler.command != 'CONNECT':
+            return self.handle_method(handler, *args, **kwargs)
+        else:
+            return self.handle_connect(handler, *args, **kwargs)
+
+    def handle_method(self, handler, *args, **kwargs):
+        method = handler.command
+        if handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
+            url = handler.path
+        else:
+            url = 'http://%s%s' % (handler.headers['Host'], handler.path)
+        headers = dict((k.title(), v) for k, v in handler.headers.items())
+        body = handler.body
+        response = None
+        try:
+            response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
+            logging.info('%s "FORWARD %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
+            response_headers = dict((k.title(), v) for k, v in response.getheaders())
+            handler.send_response(response.status)
+            for key, value in response.getheaders():
+                handler.send_header(key, value)
+            handler.end_headers()
+            if handler.command == 'HEAD' or response.status in (204, 304):
+                response.close()
+                return
+            need_chunked = 'Transfer-Encoding' in response_headers
+            while True:
+                data = response.read(8192)
+                if not data:
+                    if need_chunked:
+                        handler.wfile.write('0\r\n\r\n')
+                    break
+                if need_chunked:
+                    handler.wfile.write('%x\r\n' % len(data))
+                handler.wfile.write(data)
+                if need_chunked:
+                    handler.wfile.write('\r\n')
+                del data
+        except (ssl.SSLError, socket.timeout, socket.error):
+            if response:
+                if response.fp and response.fp._sock:
+                    response.fp._sock.close()
+                response.close()
+        finally:
+            if response:
+                response.close()
+
+    def handle_connect(self, handler, *args, **kwargs):
+        """forward socket"""
+        host = handler.host
+        port = handler.port
+        local = handler.connection
+        remote = None
+        handler.send_response(200)
+        handler.end_headers()
+        handler.close_connection = 1
+        data = local.recv(1024)
+        if not data:
+            local.close()
+            return
+        data_is_clienthello = is_clienthello(data)
+        if data_is_clienthello:
+            kwargs['client_hello'] = data
+        max_retry = kwargs.get('max_retry', 3)
+        for i in xrange(max_retry):
+            try:
+                remote = handler.create_tcp_connection(host, port, self.connect_timeout, **kwargs)
+                if not data_is_clienthello and remote and not isinstance(remote, Exception):
+                    remote.sendall(data)
+                break
+            except StandardError as e:
+                logging.exception('%s "FORWARD %s %s:%d %s" %r', handler.address_string(), handler.command, host, port, handler.protocol_version, e)
+                if hasattr(remote, 'close'):
+                    remote.close()
+                if i == max_retry - 1:
+                    raise
+        logging.info('%s "FORWARD %s %s:%d %s" - -', handler.address_string(), handler.command, host, port, handler.protocol_version)
+        if hasattr(remote, 'fileno'):
+            # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
+            remote.settimeout(None)
+        del kwargs
+        data = data_is_clienthello and getattr(remote, 'data', None)
+        if data:
+            del remote.data
+            local.sendall(data)
+        forward_socket(local, remote, handler.max_timeout, bufsize=256*1024)
+
+
+class BaseProxyHandlerFilter(object):
+    """base proxy handler filter"""
+    def filter(self, handler):
+        raise NotImplementedError
+
+
+class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
+    """simple proxy handler filter"""
+    def filter(self, handler):
+        return 'direct',
+
+
+class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
+    """simple proxy handler filter"""
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            return 'strip', True
+        else:
+            return 'direct',
+
+
+class AuthFilter(BaseProxyHandlerFilter):
+    """authorization filter"""
+    auth_info = "Proxy authentication required"""
+    white_list = set(['127.0.0.1'])
+
+    def __init__(self, username, password):
+        self.username = username
+        self.password = password
+
+    def check_auth_header(self, auth_header):
+        method, _, auth_data = auth_header.partition(' ')
+        if method == 'Basic':
+            username, _, password = base64.b64decode(auth_data).partition(':')
+            if username == self.username and password == self.password:
+                return True
+        return False
+
+    def filter(self, handler):
+        if self.white_list and handler.client_address[0] in self.white_list:
+            return None
+        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
+        if auth_header and self.check_auth_header(auth_header):
+            handler.auth_header = auth_header
+        else:
+            headers = {'Access-Control-Allow-Origin': '*',
+                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
+                       'Content-Length': '0',
+                       'Connection': 'keep-alive'}
+            return 'mock', 407, headers, ''
+
+
+class UserAgentFilter(BaseProxyHandlerFilter):
+    """user agent filter"""
+    def __init__(self, user_agent):
+        self.user_agent = user_agent
+
+    def filter(self, handler):
+        handler.headers['User-Agent'] = self.user_agent
+
+
+class ForceHttpsFilter(BaseProxyHandlerFilter):
+    """force https filter"""
+    def __init__(self, forcehttps_sites, noforcehttps_sites):
+        self.forcehttps_sites = tuple(forcehttps_sites)
+        self.noforcehttps_sites = set(noforcehttps_sites)
+
+    def filter(self, handler):
+        if handler.command != 'CONNECT' and handler.host.endswith(self.forcehttps_sites) and handler.host not in self.noforcehttps_sites:
+            if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
+                logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
+                headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
+                return 'mock', 301, headers, ''
+
+
+class FakeHttpsFilter(BaseProxyHandlerFilter):
+    """fake https filter"""
+    def __init__(self, fakehttps_sites, nofakehttps_sites):
+        self.fakehttps_sites = tuple(fakehttps_sites)
+        self.nofakehttps_sites = set(nofakehttps_sites)
+
+    def filter(self, handler):
+        if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
+            logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
+            return 'strip', True
+
+
+class URLRewriteFilter(BaseProxyHandlerFilter):
+    """url rewrite filter"""
+    rules = {
+                'www.google.com': (r'^https?://www\.google\.com/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+                'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+            }
+    def filter(self, handler):
+        if handler.host in self.rules:
+            pattern, callback = self.rules[handler.host]
+            m = re.search(pattern, handler.path)
+            if m:
+                logging.debug('URLRewriteFilter metched %r', handler.path)
+                headers = {'Location': callback(m), 'Connection': 'close'}
+                return 'mock', 301, headers, ''
+
+
+class StaticFileFilter(BaseProxyHandlerFilter):
+    """static file filter"""
+    index_file = 'index.html'
+
+    def format_index_html(self, dirname):
+        INDEX_TEMPLATE = u'''
+        <html>
+        <title>Directory listing for $dirname</title>
+        <body>
+        <h2>Directory listing for $dirname</h2>
+        <hr>
+        <ul>
+        $html
+        </ul>
+        <hr>
+        </body></html>
+        '''
+        html = ''
+        if not isinstance(dirname, unicode):
+            dirname = dirname.decode(sys.getfilesystemencoding())
+        for name in os.listdir(dirname):
+            fullname = os.path.join(dirname, name)
+            suffix = u'/' if os.path.isdir(fullname) else u''
+            html += u'<li><a href="%s%s">%s%s</a>\r\n' % (name, suffix, name, suffix)
+        return string.Template(INDEX_TEMPLATE).substitute(dirname=dirname, html=html)
+
+    def filter(self, handler):
+        path = urlparse.urlsplit(handler.path).path
+        if path.startswith('/'):
+            path = urllib.unquote_plus(path.lstrip('/') or '.').decode('utf8')
+            if os.path.isdir(path):
+                index_file = os.path.join(path, self.index_file)
+                if not os.path.isfile(index_file):
+                    content = self.format_index_html(path).encode('UTF-8')
+                    headers = {'Content-Type': 'text/html; charset=utf-8', 'Connection': 'close'}
+                    return 'mock', 200, headers, content
+                else:
+                    path = index_file
+            if os.path.isfile(path):
+                content_type = 'application/octet-stream'
+                try:
+                    import mimetypes
+                    content_type = mimetypes.types_map.get(os.path.splitext(path)[1])
+                except StandardError as e:
+                    logging.error('import mimetypes failed: %r', e)
+                with open(path, 'rb') as fp:
+                    content = fp.read()
+                    headers = {'Connection': 'close', 'Content-Type': content_type}
+                    return 'mock', 200, headers, content
+
+
+class BlackholeFilter(BaseProxyHandlerFilter):
+    """blackhole filter"""
+    one_pixel_gif = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            return 'strip', True
+        elif handler.path.startswith(('http://', 'https://')):
+            headers = {'Cache-Control': 'max-age=86400',
+                       'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
+                       'Connection': 'close'}
+            content = ''
+            if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png', '.jpeg', '.bmp')):
+                headers['Content-Type'] = 'image/gif'
+                content = self.one_pixel_gif
+            return 'mock', 200, headers, content
+        else:
+            return 'mock', 404, {'Connection': 'close'}, ''
+
+
+class SimpleProxyHandler(BaseHTTPRequestHandler):
+    """Simple Proxy Handler"""
+
+    bufsize = 256*1024
+    protocol_version = 'HTTP/1.1'
+    ssl_version = ssl.PROTOCOL_SSLv23
+    disable_transport_ssl = True
+    scheme = 'http'
+    first_run_lock = threading.Lock()
+    handler_filters = [SimpleProxyHandlerFilter()]
+    handler_plugins = {'direct': DirectFetchPlugin()}
+
+    def finish(self):
+        """make python2 BaseHTTPRequestHandler happy"""
+        try:
+            BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
+        except NetWorkIOError as e:
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+
+    def address_string(self):
+        return '%s:%s' % self.client_address[:2]
+
+    def send_response(self, code, message=None):
+        if message is None:
+            if code in self.responses:
+                message = self.responses[code][0]
+            else:
+                message = ''
+        if self.request_version != 'HTTP/0.9':
+            self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
+
+    def send_header(self, keyword, value):
+        """Send a MIME header."""
+        base_send_header = BaseHTTPServer.BaseHTTPRequestHandler.send_header
+        keyword = keyword.title()
+        if keyword == 'Set-Cookie':
+            for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
+                base_send_header(self, keyword, cookie)
+        elif keyword == 'Content-Disposition' and '"' not in value:
+            value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
+            base_send_header(self, keyword, value)
+        else:
+            base_send_header(self, keyword, value)
+
+    def setup(self):
+        if isinstance(self.__class__.first_run, collections.Callable):
+            try:
+                with self.__class__.first_run_lock:
+                    if isinstance(self.__class__.first_run, collections.Callable):
+                        self.first_run()
+                        self.__class__.first_run = None
+            except StandardError as e:
+                logging.exception('%s.first_run() return %r', self.__class__, e)
+        self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        self.__class__.do_CONNECT = self.__class__.do_METHOD
+        self.__class__.do_GET = self.__class__.do_METHOD
+        self.__class__.do_PUT = self.__class__.do_METHOD
+        self.__class__.do_POST = self.__class__.do_METHOD
+        self.__class__.do_HEAD = self.__class__.do_METHOD
+        self.__class__.do_DELETE = self.__class__.do_METHOD
+        self.__class__.do_OPTIONS = self.__class__.do_METHOD
+        self.setup()
+
+    def handle_one_request(self):
+        if not self.disable_transport_ssl and self.scheme == 'http':
+            leadbyte = self.connection.recv(1, socket.MSG_PEEK)
+            if leadbyte in ('\x80', '\x16'):
+                server_name = ''
+                if leadbyte == '\x16':
+                    for _ in xrange(2):
+                        leaddata = self.connection.recv(1024, socket.MSG_PEEK)
+                        if is_clienthello(leaddata):
+                            try:
+                                server_name = extract_sni_name(leaddata)
+                            finally:
+                                break
+                try:
+                    certfile = CertUtil.get_cert(server_name or 'www.google.com')
+                    ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
+                except StandardError as e:
+                    if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                        logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+                    return
+                self.connection = ssl_sock
+                self.rfile = self.connection.makefile('rb', self.bufsize)
+                self.wfile = self.connection.makefile('wb', 0)
+                self.scheme = 'https'
+        return BaseHTTPServer.BaseHTTPRequestHandler.handle_one_request(self)
+
+    def first_run(self):
+        pass
+
+    def parse_header(self):
+        if self.command == 'CONNECT':
+            netloc = self.path
+        elif self.path[0] == '/':
+            netloc = self.headers.get('Host', 'localhost')
+            self.path = '%s://%s%s' % (self.scheme, netloc, self.path)
+        else:
+            netloc = urlparse.urlsplit(self.path).netloc
+        m = re.match(r'^(.+):(\d+)$', netloc)
+        if m:
+            self.host = m.group(1).strip('[]')
+            self.port = int(m.group(2))
+        else:
+            self.host = netloc
+            self.port = 443 if self.scheme == 'https' else 80
+
+    def do_METHOD(self):
+        self.parse_header()
+        self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
+        for handler_filter in self.handler_filters:
+            action = handler_filter.filter(self)
+            if not action:
+                continue
+            if not isinstance(action, tuple):
+                raise TypeError('%s must return a tuple, not %r' % (handler_filter, action))
+            plugin = self.handler_plugins[action[0]]
+            return plugin.handle(self, *action[1:])
+
+
+class MultipleConnectionMixin:
+    """Multiple Connection Mixin"""
     dns_cache = LRUCache(64*1024)
     dns_servers = []
     dns_blacklist = []
@@ -1315,8 +1787,8 @@ class AdvancedNet(BaseNet):
         return response
 
 
-class ProxyNetMixin:
-    """proxy net util"""
+class ProxyConnectionMixin:
+    """Proxy Connection Mixin"""
     def __init__(self, host, port, username='', password=''):
         self.host = host
         self.port = port
@@ -1352,502 +1824,10 @@ class ProxyNetMixin:
         return ssl_sock
 
 
-class SimpleProxyNet(ProxyNetMixin, SimpleNet):
-    pass
-
-
-class AdvancedProxyNet(ProxyNetMixin, AdvancedNet):
-    pass
-
-
-class BaseFetchPlugin(object):
-    """abstract fetch plugin"""
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def handle(self, handler, *args, **kwargs):
-        raise NotImplementedError
-
-
-class MockFetchPlugin(BaseFetchPlugin):
-    """mock fetch plugin"""
-    def handle(self, handler, status, headers, body):
-        """mock response"""
-        logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
-        headers = dict((k.title(), v) for k, v in headers.items())
-        if 'Transfer-Encoding' in headers:
-            del headers['Transfer-Encoding']
-        if 'Content-Length' not in headers:
-            headers['Content-Length'] = len(body)
-        if 'Connection' not in headers:
-            headers['Connection'] = 'close'
-        handler.send_response(status)
-        for key, value in headers.items():
-            handler.send_header(key, value)
-        handler.end_headers()
-        handler.wfile.write(body)
-
-
-class StripPlugin(BaseFetchPlugin):
-    """strip fetch plugin"""
-    def handle(self, handler, do_ssl_handshake):
-        """strip connect"""
-        certfile = CertUtil.get_cert(handler.host)
-        logging.info('%s "STRIP %s %s:%d %s" - -', handler.address_string(), handler.command, handler.host, handler.port, handler.protocol_version)
-        handler.send_response(200)
-        handler.end_headers()
-        if do_ssl_handshake:
-            try:
-                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
-            except StandardError as e:
-                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
-                    logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
-                return
-            handler.connection = ssl_sock
-            handler.rfile = handler.connection.makefile('rb', handler.bufsize)
-            handler.wfile = handler.connection.makefile('wb', 0)
-            handler.scheme = 'https'
-        try:
-            handler.raw_requestline = handler.rfile.readline(65537)
-            if len(handler.raw_requestline) > 65536:
-                handler.requestline = ''
-                handler.request_version = ''
-                handler.command = ''
-                handler.send_error(414)
-                return
-            if not handler.raw_requestline:
-                handler.close_connection = 1
-                return
-            if not handler.parse_request():
-                return
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
-                raise
-        try:
-            handler.do_METHOD()
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
-                raise
-
-
-class DirectFetchPlugin(BaseFetchPlugin):
-    """direct fetch plugin"""
-    net = AdvancedNet()
-
-    def handle(self, handler, *args, **kwargs):
-        if handler.command != 'CONNECT':
-            return self.handle_method(handler, *args, **kwargs)
-        else:
-            return self.handle_connect(handler, *args, **kwargs)
-
-    def handle_method(self, handler, *args, **kwargs):
-        method = handler.command
-        if handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
-            url = handler.path
-        else:
-            url = 'http://%s%s' % (handler.headers['Host'], handler.path)
-        headers = dict((k.title(), v) for k, v in handler.headers.items())
-        body = handler.body
-        response = None
-        try:
-            response = self.net.create_http_request(method, url, headers, body, timeout=self.net.connect_timeout, **kwargs)
-            logging.info('%s "FORWARD %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
-            response_headers = dict((k.title(), v) for k, v in response.getheaders())
-            handler.send_response(response.status)
-            for key, value in response.getheaders():
-                handler.send_header(key, value)
-            handler.end_headers()
-            if handler.command == 'HEAD' or response.status in (204, 304):
-                response.close()
-                return
-            need_chunked = 'Transfer-Encoding' in response_headers
-            while True:
-                data = response.read(8192)
-                if not data:
-                    if need_chunked:
-                        handler.wfile.write('0\r\n\r\n')
-                    break
-                if need_chunked:
-                    handler.wfile.write('%x\r\n' % len(data))
-                handler.wfile.write(data)
-                if need_chunked:
-                    handler.wfile.write('\r\n')
-                del data
-        except (ssl.SSLError, socket.timeout, socket.error):
-            if response:
-                if response.fp and response.fp._sock:
-                    response.fp._sock.close()
-                response.close()
-        finally:
-            if response:
-                response.close()
-
-    def handle_connect(self, handler, *args, **kwargs):
-        """forward socket"""
-        host = handler.host
-        port = handler.port
-        local = handler.connection
-        remote = None
-        handler.send_response(200)
-        handler.end_headers()
-        handler.close_connection = 1
-        data = local.recv(1024)
-        if not data:
-            local.close()
-            return
-        data_is_clienthello = is_clienthello(data)
-        if data_is_clienthello:
-            kwargs['client_hello'] = data
-        max_retry = kwargs.get('max_retry', 3)
-        for i in xrange(max_retry):
-            try:
-                remote = self.net.create_tcp_connection(host, port, self.net.connect_timeout, **kwargs)
-                if not data_is_clienthello and remote and not isinstance(remote, Exception):
-                    remote.sendall(data)
-                break
-            except StandardError as e:
-                logging.exception('%s "FORWARD %s %s:%d %s" %r', handler.address_string(), handler.command, host, port, handler.protocol_version, e)
-                if hasattr(remote, 'close'):
-                    remote.close()
-                if i == max_retry - 1:
-                    raise
-        logging.info('%s "FORWARD %s %s:%d %s" - -', handler.address_string(), handler.command, host, port, handler.protocol_version)
-        if hasattr(remote, 'fileno'):
-            # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
-            remote.settimeout(None)
-        del kwargs
-        data = data_is_clienthello and getattr(remote, 'data', None)
-        if data:
-            del remote.data
-            local.sendall(data)
-        forward_socket(local, remote, self.net.max_timeout, bufsize=256*1024)
-
-
-
-class BaseProxyHandlerFilter(object):
-    """base proxy handler filter"""
-    def filter(self, handler):
-        raise NotImplementedError
-
-
-class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
-    """simple proxy handler filter"""
-    def filter(self, handler):
-        return 'direct',
-
-
-class AuthFilter(BaseProxyHandlerFilter):
-    """authorization filter"""
-    auth_info = "Proxy authentication required"""
-    white_list = set(['127.0.0.1'])
-
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def check_auth_header(self, auth_header):
-        method, _, auth_data = auth_header.partition(' ')
-        if method == 'Basic':
-            username, _, password = base64.b64decode(auth_data).partition(':')
-            if username == self.username and password == self.password:
-                return True
-        return False
-
-    def filter(self, handler):
-        if self.white_list and handler.client_address[0] in self.white_list:
-            return None
-        auth_header = handler.headers.get('Proxy-Authorization') or getattr(handler, 'auth_header', None)
-        if auth_header and self.check_auth_header(auth_header):
-            handler.auth_header = auth_header
-        else:
-            headers = {'Access-Control-Allow-Origin': '*',
-                       'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
-                       'Content-Length': '0',
-                       'Connection': 'keep-alive'}
-            return 'mock', 407, headers, ''
-
-
-class UserAgentFilter(BaseProxyHandlerFilter):
-    """user agent filter"""
-    def __init__(self, user_agent):
-        self.user_agent = user_agent
-
-    def filter(self, handler):
-        handler.headers['User-Agent'] = self.user_agent
-
-
-class ForceHttpsFilter(BaseProxyHandlerFilter):
-    """force https filter"""
-    def __init__(self, forcehttps_sites, noforcehttps_sites):
-        self.forcehttps_sites = tuple(forcehttps_sites)
-        self.noforcehttps_sites = set(noforcehttps_sites)
-
-    def filter(self, handler):
-        if handler.command != 'CONNECT' and handler.host.endswith(self.forcehttps_sites) and handler.host not in self.noforcehttps_sites:
-            if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
-                logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-                headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
-                return 'mock', 301, headers, ''
-
-
-class FakeHttpsFilter(BaseProxyHandlerFilter):
-    """fake https filter"""
-    def __init__(self, fakehttps_sites, nofakehttps_sites):
-        self.fakehttps_sites = tuple(fakehttps_sites)
-        self.nofakehttps_sites = set(nofakehttps_sites)
-
-    def filter(self, handler):
-        if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
-            logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
-            return 'strip', True
-
-
-class URLRewriteFilter(BaseProxyHandlerFilter):
-    """url rewrite filter"""
-    rules = {
-                'www.google.com': (r'^https?://www\.google\.com/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
-                'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
-            }
-    def filter(self, handler):
-        if handler.host in self.rules:
-            pattern, callback = self.rules[handler.host]
-            m = re.search(pattern, handler.path)
-            if m:
-                logging.debug('URLRewriteFilter metched %r', handler.path)
-                headers = {'Location': callback(m), 'Connection': 'close'}
-                return 'mock', 301, headers, ''
-
-
-class StaticFileFilter(BaseProxyHandlerFilter):
-    """static file filter"""
-    index_file = 'index.html'
-
-    def format_index_html(self, dirname):
-        INDEX_TEMPLATE = u'''
-        <html>
-        <title>Directory listing for $dirname</title>
-        <body>
-        <h2>Directory listing for $dirname</h2>
-        <hr>
-        <ul>
-        $html
-        </ul>
-        <hr>
-        </body></html>
-        '''
-        html = ''
-        if not isinstance(dirname, unicode):
-            dirname = dirname.decode(sys.getfilesystemencoding())
-        for name in os.listdir(dirname):
-            fullname = os.path.join(dirname, name)
-            suffix = u'/' if os.path.isdir(fullname) else u''
-            html += u'<li><a href="%s%s">%s%s</a>\r\n' % (name, suffix, name, suffix)
-        return string.Template(INDEX_TEMPLATE).substitute(dirname=dirname, html=html)
-
-    def filter(self, handler):
-        path = urlparse.urlsplit(handler.path).path
-        if path.startswith('/'):
-            path = urllib.unquote_plus(path.lstrip('/') or '.').decode('utf8')
-            if os.path.isdir(path):
-                index_file = os.path.join(path, self.index_file)
-                if not os.path.isfile(index_file):
-                    content = self.format_index_html(path).encode('UTF-8')
-                    headers = {'Content-Type': 'text/html; charset=utf-8', 'Connection': 'close'}
-                    return 'mock', 200, headers, content
-                else:
-                    path = index_file
-            if os.path.isfile(path):
-                content_type = 'application/octet-stream'
-                try:
-                    import mimetypes
-                    content_type = mimetypes.types_map.get(os.path.splitext(path)[1])
-                except StandardError as e:
-                    logging.error('import mimetypes failed: %r', e)
-                with open(path, 'rb') as fp:
-                    content = fp.read()
-                    headers = {'Connection': 'close', 'Content-Type': content_type}
-                    return 'mock', 200, headers, content
-
-
-class BlackholeFilter(BaseProxyHandlerFilter):
-    """blackhole filter"""
-    one_pixel_gif = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-
-    def filter(self, handler):
-        if handler.command == 'CONNECT':
-            return 'strip', True
-        elif handler.path.startswith(('http://', 'https://')):
-            headers = {'Cache-Control': 'max-age=86400',
-                       'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
-                       'Connection': 'close'}
-            content = ''
-            if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png', '.jpeg', '.bmp')):
-                headers['Content-Type'] = 'image/gif'
-                content = self.one_pixel_gif
-            return 'mock', 200, headers, content
-        else:
-            return 'mock', 404, {'Connection': 'close'}, ''
-
-
-class LocalProxyServer(SocketServer.ThreadingTCPServer):
-    """Local Proxy Server"""
-    allow_reuse_address = True
-    daemon_threads = True
-
-    def close_request(self, request):
-        try:
-            request.close()
-        except StandardError:
-            pass
-
-    def finish_request(self, request, client_address):
-        try:
-            self.RequestHandlerClass(request, client_address, self)
-        except NetWorkIOError as e:
-            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
-                raise
-
-    def handle_error(self, *args):
-        """make ThreadingTCPServer happy"""
-        exc_info = sys.exc_info()
-        error = exc_info and len(exc_info) and exc_info[1]
-        if isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write retry' in error.args[1]:
-            exc_info = error = None
-        else:
-            del exc_info, error
-            SocketServer.ThreadingTCPServer.handle_error(self, *args)
-
-
-class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    """SimpleProxyHandler for GoAgent 3.x"""
-
-    bufsize = 256*1024
-    protocol_version = 'HTTP/1.1'
-    ssl_version = ssl.PROTOCOL_SSLv23
-    disable_transport_ssl = True
-    scheme = 'http'
-    first_run_lock = threading.Lock()
-    handler_filters = [SimpleProxyHandlerFilter()]
-    handler_plugins = {'direct': DirectFetchPlugin()}
-
-    def finish(self):
-        """make python2 BaseHTTPRequestHandler happy"""
-        try:
-            BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
-        except NetWorkIOError as e:
-            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
-                raise
-
-    def address_string(self):
-        return '%s:%s' % self.client_address[:2]
-
-    def send_response(self, code, message=None):
-        if message is None:
-            if code in self.responses:
-                message = self.responses[code][0]
-            else:
-                message = ''
-        if self.request_version != 'HTTP/0.9':
-            self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
-
-    def send_header(self, keyword, value):
-        """Send a MIME header."""
-        base_send_header = BaseHTTPServer.BaseHTTPRequestHandler.send_header
-        keyword = keyword.title()
-        if keyword == 'Set-Cookie':
-            for cookie in re.split(r', (?=[^ =]+(?:=|$))', value):
-                base_send_header(self, keyword, cookie)
-        elif keyword == 'Content-Disposition' and '"' not in value:
-            value = re.sub(r'filename=([^"\']+)', 'filename="\\1"', value)
-            base_send_header(self, keyword, value)
-        else:
-            base_send_header(self, keyword, value)
-
-    def setup(self):
-        if isinstance(self.__class__.first_run, collections.Callable):
-            try:
-                with self.__class__.first_run_lock:
-                    if isinstance(self.__class__.first_run, collections.Callable):
-                        self.first_run()
-                        self.__class__.first_run = None
-            except StandardError as e:
-                logging.exception('%s.first_run() return %r', self.__class__, e)
-        self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-        self.__class__.do_CONNECT = self.__class__.do_METHOD
-        self.__class__.do_GET = self.__class__.do_METHOD
-        self.__class__.do_PUT = self.__class__.do_METHOD
-        self.__class__.do_POST = self.__class__.do_METHOD
-        self.__class__.do_HEAD = self.__class__.do_METHOD
-        self.__class__.do_DELETE = self.__class__.do_METHOD
-        self.__class__.do_OPTIONS = self.__class__.do_METHOD
-        self.setup()
-
-    def handle_one_request(self):
-        if not self.disable_transport_ssl and self.scheme == 'http':
-            leadbyte = self.connection.recv(1, socket.MSG_PEEK)
-            if leadbyte in ('\x80', '\x16'):
-                server_name = ''
-                if leadbyte == '\x16':
-                    for _ in xrange(2):
-                        leaddata = self.connection.recv(1024, socket.MSG_PEEK)
-                        if is_clienthello(leaddata):
-                            try:
-                                server_name = extract_sni_name(leaddata)
-                            finally:
-                                break
-                try:
-                    certfile = CertUtil.get_cert(server_name or 'www.google.com')
-                    ssl_sock = ssl.wrap_socket(self.connection, ssl_version=self.ssl_version, keyfile=certfile, certfile=certfile, server_side=True)
-                except StandardError as e:
-                    if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
-                        logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
-                    return
-                self.connection = ssl_sock
-                self.rfile = self.connection.makefile('rb', self.bufsize)
-                self.wfile = self.connection.makefile('wb', 0)
-                self.scheme = 'https'
-        return BaseHTTPServer.BaseHTTPRequestHandler.handle_one_request(self)
-
-    def first_run(self):
-        pass
-
-    def handle_urlfetch_error(self, fetchserver, response):
-        pass
-
-    def handle_urlfetch_response_close(self, fetchserver, response):
-        pass
-
-    def parse_header(self):
-        if self.command == 'CONNECT':
-            netloc = self.path
-        elif self.path[0] == '/':
-            netloc = self.headers.get('Host', 'localhost')
-            self.path = '%s://%s%s' % (self.scheme, netloc, self.path)
-        else:
-            netloc = urlparse.urlsplit(self.path).netloc
-        m = re.match(r'^(.+):(\d+)$', netloc)
-        if m:
-            self.host = m.group(1).strip('[]')
-            self.port = int(m.group(2))
-        else:
-            self.host = netloc
-            self.port = 443 if self.scheme == 'https' else 80
-
-    def do_METHOD(self):
-        self.parse_header()
-        self.body = self.rfile.read(int(self.headers['Content-Length'])) if 'Content-Length' in self.headers else ''
-        for handler_filter in self.handler_filters:
-            action = handler_filter.filter(self)
-            if not action:
-                continue
-            if not isinstance(action, tuple):
-                raise TypeError('%s must return a tuple, not %r' % (handler_filter, action))
-            plugin = self.handler_plugins[action[0]]
-            return plugin.handle(self, *action[1:])
-
-
 def test():
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
+    SimpleProxyHandler.handler_filters.insert(0, MIMTProxyHandlerFilter())
+    SimpleProxyHandler.handler_plugins['strip'] = StripPlugin()
     server = LocalProxyServer(('', 8080), SimpleProxyHandler)
     server.serve_forever()
 
