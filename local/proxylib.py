@@ -14,6 +14,7 @@ import binascii
 import zlib
 import itertools
 import re
+import fnmatch
 import io
 import random
 import base64
@@ -1070,6 +1071,59 @@ class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
             return 'direct',
 
 
+class JumpLastFilter(BaseProxyHandlerFilter):
+    """with gae filter"""
+    def __init__(self, jumplast_sites):
+        self.jumplast_sites = set(jumplast_sites)
+
+    def filter(self, handler):
+        if handler.host in self.jumplast_sites:
+            logging.debug('JumpLastFilter metched %r %r', handler.path, handler.headers)
+            return handler.handler_filters[-1].filter(handler)
+
+
+class DirectRegionFilter(BaseProxyHandlerFilter):
+    """direct region filter"""
+    region_cache = LRUCache(16*1024)
+
+    def __init__(self, regions):
+        self.regions = set(regions)
+        try:
+            import pygeoip
+            self.geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat'))
+        except StandardError as e:
+            logging.error('DirectRegionFilter init pygeoip failed: %r', e)
+            sys.exit(-1)
+
+    def get_country_code(self, hostname, dnsservers):
+        """http://dev.maxmind.com/geoip/legacy/codes/iso3166/"""
+        try:
+            return self.region_cache[hostname]
+        except KeyError:
+            pass
+        try:
+            if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
+                iplist = [hostname]
+            elif dnsservers:
+                iplist = dnslib_record2iplist(dnslib_resolve_over_udp(hostname, dnsservers, timeout=2))
+            else:
+                iplist = socket.gethostbyname_ex(hostname)[-1]
+            country_code = self.geoip.country_code_by_addr(iplist[0])
+        except StandardError as e:
+            logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
+            country_code = ''
+        self.region_cache[hostname] = country_code
+        return country_code
+
+    def filter(self, handler):
+        country_code = self.get_country_code(handler.host, handler.dns_servers)
+        if country_code in self.regions:
+            if handler.command == 'CONNECT':
+                return [handler.FORWARD, handler.host, handler.port, handler.connect_timeout]
+            else:
+                return [handler.DIRECT, {}]
+
+
 class AuthFilter(BaseProxyHandlerFilter):
     """authorization filter"""
     auth_info = "Proxy authentication required"""
@@ -1152,6 +1206,31 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
                 return 'mock', 301, headers, ''
 
 
+class AutoRangeFilter(BaseProxyHandlerFilter):
+    """auto range filter"""
+    def __init__(self, hosts_patterns, endswith_exts, noendswith_exts, maxsize):
+        self.hosts_match = [re.compile(fnmatch.translate(h)).match for h in hosts_patterns]
+        self.endswith_exts = tuple(endswith_exts)
+        self.noendswith_exts = tuple(noendswith_exts)
+        self.maxsize = int(maxsize)
+
+    def filter(self, handler):
+        path = urlparse.urlsplit(handler.path).path
+        need_autorange = any(x(handler.host) for x in self.hosts_match) or path.endswith(self.endswith_exts)
+        if path.endswith(self.noendswith_exts) or 'range=' in urlparse.urlsplit(path).query or handler.command == 'HEAD':
+            return None
+        if handler.command != 'HEAD' and handler.headers.get('Range'):
+            m = re.search(r'bytes=(\d+)-', handler.headers['Range'])
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+self.maxsize-1)
+            logging.info('autorange range=%r match url=%r', handler.headers['Range'], handler.path)
+        elif need_autorange:
+            logging.info('Found [autorange]endswith match url=%r', handler.path)
+            m = re.search(r'bytes=(\d+)-', handler.headers.get('Range', ''))
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+self.maxsize-1)
+
+
 class StaticFileFilter(BaseProxyHandlerFilter):
     """static file filter"""
     index_file = 'index.html'
@@ -1229,11 +1308,21 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     bufsize = 256*1024
     protocol_version = 'HTTP/1.1'
     ssl_version = ssl.PROTOCOL_SSLv23
+    skip_headers = frozenset(['Vary',
+                              'Via',
+                              'X-Forwarded-For',
+                              'Proxy-Authorization',
+                              'Proxy-Connection',
+                              'Upgrade',
+                              'X-Chrome-Variations',
+                              'Connection',
+                              'Cache-Control'])
     disable_transport_ssl = True
     scheme = 'http'
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
-    handler_plugins = {'direct': DirectFetchPlugin()}
+    handler_plugins = {'direct': DirectFetchPlugin(),
+                       'strip': StripPlugin(),}
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -1364,15 +1453,6 @@ class MultipleConnectionMixin:
     ssl_version = ssl.PROTOCOL_TLSv1
     ssl_connection_keepalive = False
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
-    skip_headers = frozenset(['Vary',
-                              'Via',
-                              'X-Forwarded-For',
-                              'Proxy-Authorization',
-                              'Proxy-Connection',
-                              'Upgrade',
-                              'X-Chrome-Variations',
-                              'Connection',
-                              'Cache-Control'])
 
     def gethostbyname2(self, hostname):
         try:
@@ -1827,7 +1907,6 @@ class ProxyConnectionMixin:
 def test():
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     SimpleProxyHandler.handler_filters.insert(0, MIMTProxyHandlerFilter())
-    SimpleProxyHandler.handler_plugins['strip'] = StripPlugin()
     server = LocalProxyServer(('', 8080), SimpleProxyHandler)
     server.serve_forever()
 

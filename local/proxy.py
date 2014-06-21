@@ -173,7 +173,6 @@ class Logging(type(sys)):
 logging = sys.modules['logging'] = Logging('logging')
 
 
-from proxylib import LRUCache
 from proxylib import CertUtil
 from proxylib import dnslib_resolve_over_tcp
 from proxylib import dnslib_resolve_over_udp
@@ -370,25 +369,17 @@ class RangeFetch(object):
                 raise
 
 
-class MyURLFetch(object):
-    """URLFetch for gae/php fetchservers"""
-    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
+class GAEFetchPlugin(BaseFetchPlugin):
+    """direct fetch plugin"""
+    connect_timeout = 4
+    def __init__(self, fetchservers, 
 
-    def __init__(self, fetchserver, create_http_request):
-        assert isinstance(fetchserver, basestring) and callable(create_http_request)
-        self.fetchserver = fetchserver
-        self.create_http_request = create_http_request
-
-    def fetch(self, method, url, headers, body, timeout, **kwargs):
-        if '.appspot.com/' in self.fetchserver:
-            response = self.__gae_fetch(method, url, headers, body, timeout, **kwargs)
-            response.app_header_parsed = True
-        else:
-            response = self.__php_fetch(method, url, headers, body, timeout, **kwargs)
-            response.app_header_parsed = False
-        return response
-
-    def __gae_fetch(self, method, url, headers, body, timeout, **kwargs):
+    def handle(self, handler, fetchserver, **kwargs):
+        assert handler.command != 'CONNECT'
+        method = handler.command
+        url = handler.path
+        headers = dict((k.title(), v) for k, v in handler.headers.items())
+        body = handler.body
         rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
         if isinstance(body, basestring) and body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
@@ -401,21 +392,20 @@ class MyURLFetch(object):
         if 'Host' in headers:
             del headers['Host']
         metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
-        skip_headers = self.skip_headers
+        skip_headers = handler.skip_headers
         metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
         # prepare GAE request
-        request_fetchserver = self.fetchserver
         request_method = 'POST'
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
-            request_fetchserver += '/ps/%s.gif' % uuid.uuid1()
+            fetchserver += '/ps/%s.gif' % uuid.uuid1()
             request_headers['X-GOA-PS1'] = base64.b64encode(deflate(metadata)).strip()
             if body:
                 request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
                 body = ''
             if common.GAE_PAGESPEED:
-                request_fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', request_fetchserver)
+                fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', fetchserver)
         else:
             metadata = deflate(metadata)
             body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
@@ -427,7 +417,7 @@ class MyURLFetch(object):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self.create_http_request(request_method, request_fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
+        response = handler.create_http_request(request_method, fetchserver, request_headers, body, self.connect_timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
@@ -453,7 +443,11 @@ class MyURLFetch(object):
                 response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         return response
 
-    def __php_fetch(self, method, url, headers, body, timeout, **kwargs):
+class PHPFetchPlugin(BaseFetchPlugin):
+    """direct fetch plugin"""
+    connect_timeout = 4
+
+    def handle(self, handler, fetchserver, **kwargs):
         if body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
                 zbody = deflate(body)
@@ -479,18 +473,6 @@ class MyURLFetch(object):
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
         return response
-
-
-class WithGAEFilter(BaseProxyHandlerFilter):
-    """with gae filter"""
-    def __init__(self, withgae_sites):
-        self.withgae_sites = set(withgae_sites)
-
-    def filter(self, handler):
-        if handler.host in self.withgae_sites:
-            logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
-            # assume the last one handler is GAEFetchFilter
-            return handler.handler_filters[-1].filter(handler)
 
 
 class HostsFilter(BaseProxyHandlerFilter):
@@ -558,63 +540,6 @@ class HostsFilter(BaseProxyHandlerFilter):
                 return [handler.DIRECT, {'crlf': True}]
             else:
                 return [handler.DIRECT, {'cache_key': cache_key}]
-
-
-class DirectRegionFilter(BaseProxyHandlerFilter):
-    """direct region filter"""
-    geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
-    region_cache = LRUCache(16*1024)
-
-    def __init__(self, regions):
-        self.regions = set(regions)
-
-    def get_country_code(self, hostname, dnsservers):
-        """http://dev.maxmind.com/geoip/legacy/codes/iso3166/"""
-        try:
-            return self.region_cache[hostname]
-        except KeyError:
-            pass
-        try:
-            if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
-                iplist = [hostname]
-            elif dnsservers:
-                iplist = dnslib_record2iplist(dnslib_resolve_over_udp(hostname, dnsservers, timeout=2))
-            else:
-                iplist = socket.gethostbyname_ex(hostname)[-1]
-            country_code = self.geoip.country_code_by_addr(iplist[0])
-        except StandardError as e:
-            logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
-            country_code = ''
-        self.region_cache[hostname] = country_code
-        return country_code
-
-    def filter(self, handler):
-        if self.geoip:
-            country_code = self.get_country_code(handler.host, handler.dns_servers)
-            if country_code in self.regions:
-                if handler.command == 'CONNECT':
-                    return [handler.FORWARD, handler.host, handler.port, handler.connect_timeout]
-                else:
-                    return [handler.DIRECT, {}]
-
-
-class AutoRangeFilter(BaseProxyHandlerFilter):
-    """force https filter"""
-    def filter(self, handler):
-        path = urlparse.urlsplit(handler.path).path
-        need_autorange = any(x(handler.host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)
-        if path.endswith(common.AUTORANGE_NOENDSWITH) or 'range=' in urlparse.urlsplit(path).query or handler.command == 'HEAD':
-            need_autorange = False
-        if handler.command != 'HEAD' and handler.headers.get('Range'):
-            m = re.search(r'bytes=(\d+)-', handler.headers['Range'])
-            start = int(m.group(1) if m else 0)
-            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-            logging.info('autorange range=%r match url=%r', handler.headers['Range'], handler.path)
-        elif need_autorange:
-            logging.info('Found [autorange]endswith match url=%r', handler.path)
-            m = re.search(r'bytes=(\d+)-', handler.headers.get('Range', ''))
-            start = int(m.group(1) if m else 0)
-            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
@@ -1241,7 +1166,6 @@ class Common(object):
             self.GAE_MODE = 'https'
 
         self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
-        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in self.AUTORANGE_HOSTS]
         self.AUTORANGE_ENDSWITH = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.AUTORANGE_NOENDSWITH = tuple(self.CONFIG.get('autorange', 'noendswith').split('|'))
         self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
