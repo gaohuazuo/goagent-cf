@@ -885,8 +885,6 @@ class BaseHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return response
 
 
-
-
 class BaseFetchPlugin(object):
     """abstract fetch plugin"""
     def __init__(self, *args, **kwargs):
