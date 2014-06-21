@@ -192,6 +192,9 @@ from proxylib import RC4Cipher
 from proxylib import FakeHttpsFilter
 from proxylib import ForceHttpsFilter
 from proxylib import StaticFileFilter
+from proxylib import AutoRangeFilter
+from proxylib import DirectRegionFilter
+from proxylib import JumpLastFilter
 from proxylib import get_process_list
 from proxylib import get_uptime
 from proxylib import LocalProxyServer
@@ -200,6 +203,9 @@ from proxylib import BaseFetchPlugin
 from proxylib import SimpleProxyHandler
 from proxylib import MultipleConnectionMixin
 from proxylib import ProxyConnectionMixin
+from proxylib import DirectFetchPlugin
+from proxylib import MockFetchPlugin
+from proxylib import StripPlugin
 from proxylib import message_html
 
 
@@ -603,9 +609,9 @@ class HostsFilter(BaseProxyHandlerFilter):
                 headers = {'Connection': 'close', 'Content-Length': str(len(data))}
                 if content_type:
                     headers['Content-Type'] = content_type
-                return [handler.MOCK, 200, headers, data]
+                return 'mock', {'status': 200, 'headers': headers, 'body': data}
         except StandardError as e:
-            return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
+            return 'mock', {'status': 403, 'headers': {'Connection': 'close'}, 'body': 'read %r %r' % (filename, e)}
 
     def filter(self, handler):
         host, port = handler.host, handler.port
@@ -646,13 +652,13 @@ class HostsFilter(BaseProxyHandlerFilter):
             return self.filter_localfile(handler, filename)
         cache_key = '%s:%s' % (hostname, port)
         if handler.command == 'CONNECT':
-            return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
+            return 'direct', {'connect_kwargs': {'cache_key': cache_key}}
         else:
             if host.endswith(common.CRLF_SITES):
                 handler.close_connection = True
-                return [handler.DIRECT, {'crlf': True}]
+                return 'direct', {'crlf': True}
             else:
-                return [handler.DIRECT, {'cache_key': cache_key}]
+                return 'direct', {'cache_key': cache_key}
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
@@ -661,26 +667,26 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
         """https://developers.google.com/appengine/docs/python/urlfetch/"""
         if handler.command == 'CONNECT':
             do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
-            return [handler.STRIP, do_ssl_handshake, self if not common.URLRE_MAP else None]
+            return 'strip', {'do_ssl_handshake': do_ssl_handshake}
         elif handler.command in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
-            kwargs = {}
-            if common.GAE_PASSWORD:
-                kwargs['password'] = common.GAE_PASSWORD
-            if common.GAE_VALIDATE:
-                kwargs['validate'] = 1
-            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
+            return 'gae', {}
         else:
-            if common.PHP_ENABLE:
-                return PHPProxyHandler.handler_filters[-1].filter(handler)
+            if 'php' in handler.handler_plugins:
+                return 'php', {}
             else:
                 logging.warning('"%s %s" not supported by GAE, please enable PHP mode!', handler.command, handler.host)
-                return [handler.DIRECT, {}]
+                return 'direct', {}
 
 
 class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
     """GAE Proxy Handler"""
     handler_filters = [GAEFetchFilter()]
+    handler_plugins = {'direct': DirectFetchPlugin(),
+                       'mock': MockFetchPlugin(),
+                       'strip': StripPlugin(),}
+
+    def __init__(self, *args, **kwargs):
+        SimpleProxyHandler.__init__(self, *args, **kwargs)
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
@@ -702,45 +708,9 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.STRIP, True, self]
+            return 'strip', {}
         else:
-            kwargs = {}
-            if common.PHP_PASSWORD:
-                kwargs['password'] = common.PHP_PASSWORD
-            if common.PHP_VALIDATE:
-                kwargs['validate'] = 1
-            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, kwargs]
-
-
-class PHPProxyHandler(AdvancedProxyHandler):
-    """PHP Proxy Handler"""
-    first_run_lock = threading.Lock()
-    handler_filters = [PHPFetchFilter()]
-
-    def first_run(self):
-        if not common.PROXY_ENABLE:
-            common.resolve_iplist()
-            fetchhost = urlparse.urlsplit(common.PHP_FETCHSERVER).hostname
-            logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
-            if common.PHP_USEHOSTS and fetchhost in common.HOST_MAP:
-                hostname = common.HOST_MAP[fetchhost]
-                fetchhost_iplist = sum([socket.gethostbyname_ex(x)[-1] for x in common.IPLIST_MAP.get(hostname) or hostname.split('|')], [])
-            else:
-                fetchhost_iplist = self.gethostbyname2(fetchhost)
-            if len(fetchhost_iplist) == 0:
-                logging.error('resolve %r domain return empty! please use ip list to replace domain list!', fetchhost)
-                sys.exit(-1)
-            self.dns_cache[fetchhost] = list(set(fetchhost_iplist))
-            logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fetchhost_iplist)
-        return True
-
-
-class ProxyChainGAEProxyHandler(ProxyChainMixin, GAEProxyHandler):
-    pass
-
-
-class ProxyChainPHPProxyHandler(ProxyChainMixin, PHPProxyHandler):
-    pass
+            return 'php', {}
 
 
 class PacUtil(object):
@@ -1084,7 +1054,7 @@ class PacFileFilter(BaseProxyHandlerFilter):
                 if is_local_client:
                     thread.start_new_thread(PacUtil.update_pacfile, (pacfile,))
                 else:
-                    return [handler.MOCK, 403, {'Content-Type': 'text/plain'}, 'client address %r not allowed' % handler.client_address[0]]
+                    return 'mock', {'status': 403, 'headers': {'Content-Type': 'text/plain'}, 'body': 'client address %r not allowed' % handler.client_address[0]}
             if time.time() - os.path.getmtime(pacfile) > common.PAC_EXPIRED:
                 # check system uptime > 30 minutes
                 uptime = get_uptime()
@@ -1105,7 +1075,7 @@ class PacFileFilter(BaseProxyHandlerFilter):
                     dataio.write(compressobj.flush())
                     dataio.write(struct.pack('<LL', zlib.crc32(content) & 0xFFFFFFFFL, len(content) & 0xFFFFFFFFL))
                     content = dataio.getvalue()
-                return [handler.MOCK, 200, headers, content]
+                return 'mock', {'status': 200, 'headers': headers, 'body': content}
 
 
 class PACProxyHandler(SimpleProxyHandler):
@@ -1462,17 +1432,17 @@ def pre_start():
             common.HTTP_DNS = common.DNS_SERVERS[:]
         for dnsservers_ref in (common.HTTP_DNS, common.DNS_SERVERS):
             any(dnsservers_ref.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in dnsservers_ref])
-        AdvancedProxyHandler.dns_servers = common.HTTP_DNS
-        AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
+        GAEProxyHandler.dns_servers = common.HTTP_DNS
+        GAEProxyHandler.dns_blacklist = common.DNS_BLACKLIST
     else:
-        AdvancedProxyHandler.dns_servers = common.HTTP_DNS or common.DNS_SERVERS
-        AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
+        GAEProxyHandler.dns_servers = common.HTTP_DNS or common.DNS_SERVERS
+        GAEProxyHandler.dns_blacklist = common.DNS_BLACKLIST
     RangeFetch.threads = common.AUTORANGE_THREADS
     RangeFetch.maxsize = common.AUTORANGE_MAXSIZE
     RangeFetch.bufsize = common.AUTORANGE_BUFSIZE
     RangeFetch.waitsize = common.AUTORANGE_WAITSIZE
     if True:
-        GAEProxyHandler.handler_filters.insert(0, AutoRangeFilter())
+        GAEProxyHandler.handler_filters.insert(0, AutoRangeFilter(common.AUTORANGE_HOSTS, common.AUTORANGE_ENDSWITH, common.AUTORANGE_NOENDSWITH, common.AUTORANGE_MAXSIZE))
     if common.GAE_REGIONS:
         GAEProxyHandler.handler_filters.insert(0, DirectRegionFilter(common.GAE_REGIONS))
     if True:
@@ -1481,15 +1451,12 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
     if common.FAKEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
-        PHPProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
     if common.FORCEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.FORCEHTTPS_SITES, common.NOFORCEHTTPS_SITES))
-        PHPProxyHandler.handler_filters.insert(0, ForceHttpsFilter(common.FORCEHTTPS_SITES, common.NOFORCEHTTPS_SITES))
     if common.WITHGAE_SITES:
-        GAEProxyHandler.handler_filters.insert(0, WithGAEFilter(common.WITHGAE_SITES))
+        GAEProxyHandler.handler_filters.insert(0, JumpLastFilter(common.WITHGAE_SITES))
     if common.USERAGENT_ENABLE:
         GAEProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
-        PHPProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
     if common.LISTEN_USERNAME:
         GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
 
