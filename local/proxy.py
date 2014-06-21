@@ -198,6 +198,9 @@ from proxylib import LocalProxyServer
 from proxylib import XORCipher
 from proxylib import BaseFetchPlugin
 from proxylib import SimpleProxyHandler
+from proxylib import MultipleConnectionMixin
+from proxylib import ProxyConnectionMixin
+from proxylib import message_html
 
 
 def is_google_ip(ipaddr):
@@ -372,6 +375,8 @@ class RangeFetch(object):
 class GAEFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
     connect_timeout = 4
+    max_retry = 2
+
     def __init__(self, appids, password, path, mode, keepalive, obfuscate, pagespeed, validate, options):
         BaseFetchPlugin.__init__(self)
         self.appids = appids
@@ -386,10 +391,75 @@ class GAEFetchPlugin(BaseFetchPlugin):
 
     def handle(self, handler):
         assert handler.command != 'CONNECT'
+        errors = []
+        for i in xrange(self.max_retry):
+            try:
+                response = self.get_response(handler)
+                if response.app_status < 400:
+                    break
+                else:
+                    if response.app_status == 503:
+                        # appid over qouta, switch to next appid
+                        if len(self.appids) > 1:
+                            self.appids.append(self.appids.pop(0))
+                            logging.info('gae over qouta, switch next appid=%r', self.appids[0])
+                    if i < self.max_retry - 1 and len(self.appids) > 1:
+                        self.appids.append(self.appids.pop(0))
+                        logging.info('URLFETCH return %d, trying next appid=%r', response.app_status, self.appids[0])
+                    response.close()
+            except StandardError as e:
+                errors.append(e)
+                logging.info('GAE "%s %s" appid=%r %r, retry...', handler.command, handler.path, self.appids[0], e)
+        if len(errors) == self.max_retry:
+            if response and response.app_status >= 500:
+                status = response.app_status
+                headers = dict(response.getheaders())
+                content = response.read()
+                response.close()
+            else:
+                status = 502
+                headers = {'Content-Type': 'text/html'}
+                content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % handler.path, '<br>'.join(repr(x) for x in errors))
+            return handler.handler_plugins['mock'].handle(status, headers, content)
+        logging.info('%s "GAE %s %s %s" %s %s', handler.address_string(), handler.command, handler.path, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
+        try:
+            if response.status == 206:
+                return RangeFetch(handler, response, fetchservers).fetch()
+            handler.close_connection = not response.getheader('Content-Length')
+            handler.send_response(response.status)
+            for key, value in response.getheaders():
+                if key.title() == 'Transfer-Encoding':
+                    continue
+                handler.send_header(key, value)
+            handler.end_headers()
+            bufsize = 8192
+            while True:
+                data = response.read(bufsize)
+                if data:
+                    handler.wfile.write(data)
+                if not data:
+                    cache_sock = getattr(response, 'cache_sock', None)
+                    if cache_sock:
+                        if handler.scheme == 'https':
+                            handler.ssl_connection_cache[response.cache_key].put((time.time(), cache_sock))
+                        else:
+                            cache_sock.close()
+                        del response.cache_sock
+                    response.close()
+                    break
+                del data
+        except NetWorkIOError as e:
+            if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
+                return
 
     def get_response(self, handler):
+        if handler.path[0] == '/':
+            url = '%s://%s%s' % (handler.scheme, handler.headers['Host'], handler.path)
+        elif handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
+            url = handler.path
+        else:
+            raise ValueError('URLFETCH %r is not a valid url' % handler.path)
         method = handler.command
-        url = handler.path
         headers = dict((k.title(), v) for k, v in handler.headers.items())
         body = handler.body
         rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
@@ -608,10 +678,9 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
                 return [handler.DIRECT, {}]
 
 
-class GAEProxyHandler(AdvancedProxyHandler):
+class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
     """GAE Proxy Handler"""
     handler_filters = [GAEFetchFilter()]
-    urlfetch_class = MyURLFetch
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
@@ -619,21 +688,14 @@ class GAEProxyHandler(AdvancedProxyHandler):
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
         random.shuffle(common.GAE_APPIDS)
+        self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS)
 
     def gethostbyname2(self, hostname):
         for postfix in ('.appspot.com', '.googleusercontent.com'):
             if hostname.endswith(postfix):
                 host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP[postfix]
                 return common.IPLIST_MAP.get(host) or host.split('|')
-        return AdvancedProxyHandler.gethostbyname2(self, hostname)
-
-    def handle_urlfetch_error(self, fetchserver, response):
-        gae_appid = urlparse.urlsplit(fetchserver).hostname.split('.')[-3]
-        if response.app_status == 503:
-            # appid over qouta, switch to next appid
-            if gae_appid == common.GAE_APPIDS[0] and len(common.GAE_APPIDS) > 1:
-                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.info('gae_appid=%r over qouta, switch next appid=%r', gae_appid, common.GAE_APPIDS[0])
+        return MultipleConnectionMixin.gethostbyname2(self, hostname)
 
 
 class PHPFetchFilter(BaseProxyHandlerFilter):
@@ -656,8 +718,6 @@ class PHPProxyHandler(AdvancedProxyHandler):
     handler_filters = [PHPFetchFilter()]
 
     def first_run(self):
-        if common.PHP_USEHOSTS:
-            self.handler_filters.insert(-1, HostsFilter())
         if not common.PROXY_ENABLE:
             common.resolve_iplist()
             fetchhost = urlparse.urlsplit(common.PHP_FETCHSERVER).hostname

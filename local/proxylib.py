@@ -1322,6 +1322,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
+                       'mock': MockFetchPlugin(),
                        'strip': StripPlugin(),}
 
     def finish(self):
@@ -1434,7 +1435,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
             return plugin.handle(self, *action[1:])
 
 
-class MultipleConnectionMixin:
+class MultipleConnectionMixin(object):
     """Multiple Connection Mixin"""
     dns_cache = LRUCache(64*1024)
     dns_servers = []
@@ -1867,7 +1868,7 @@ class MultipleConnectionMixin:
         return response
 
 
-class ProxyConnectionMixin:
+class ProxyConnectionMixin(object):
     """Proxy Connection Mixin"""
     def __init__(self, host, port, username='', password=''):
         self.host = host
