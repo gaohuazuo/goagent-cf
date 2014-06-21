@@ -978,7 +978,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
         response = None
         try:
             response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
-            logging.info('%s "FORWARD %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
+            logging.info('%s "DIRECT %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
             handler.send_response(response.status)
             for key, value in response.getheaders():

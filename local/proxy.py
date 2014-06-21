@@ -72,7 +72,6 @@ import zlib
 import httplib
 import re
 import io
-import fnmatch
 import traceback
 import random
 import base64
@@ -197,6 +196,7 @@ from proxylib import get_process_list
 from proxylib import get_uptime
 from proxylib import LocalProxyServer
 from proxylib import XORCipher
+from proxylib import BaseFetchPlugin
 from proxylib import SimpleProxyHandler
 
 
@@ -372,10 +372,22 @@ class RangeFetch(object):
 class GAEFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
     connect_timeout = 4
-    def __init__(self, fetchservers, 
+    def __init__(self, appids, password, path, mode, keepalive, obfuscate, pagespeed, validate, options):
+        BaseFetchPlugin.__init__(self)
+        self.appids = appids
+        self.password = password
+        self.path = path
+        self.mode = mode
+        self.keepalive = keepalive
+        self.obfuscate = obfuscate
+        self.pagespeed = pagespeed
+        self.validate = validate
+        self.options = options
 
-    def handle(self, handler, fetchserver, **kwargs):
+    def handle(self, handler):
         assert handler.command != 'CONNECT'
+
+    def get_response(self, handler):
         method = handler.command
         url = handler.path
         headers = dict((k.title(), v) for k, v in handler.headers.items())
@@ -391,11 +403,19 @@ class GAEFetchPlugin(BaseFetchPlugin):
         # GAE donot allow set `Host` header
         if 'Host' in headers:
             del headers['Host']
+        kwargs = {}
+        if self.password:
+            kwargs['password'] = self.password
+        if self.options:
+            kwargs['options'] = self.options
+        if self.validate:
+            kwargs['validate'] = self.validate
         metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
         skip_headers = handler.skip_headers
         metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
         # prepare GAE request
         request_method = 'POST'
+        fetchserver = '%s://%s.appspot.com%s' % (self.mode, self.appids[0], self.path)
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
@@ -443,11 +463,21 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         return response
 
+
 class PHPFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
     connect_timeout = 4
+    def __init__(self, fetchservers, password, validate):
+        BaseFetchPlugin.__init__(self)
+        self.fetchservers = fetchservers
+        self.password = password
+        self.validate = validate
 
     def handle(self, handler, fetchserver, **kwargs):
+        method = handler.command
+        url = handler.path
+        headers = dict((k.title(), v) for k, v in handler.headers.items())
+        body = handler.body
         if body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
                 zbody = deflate(body)
@@ -455,15 +485,15 @@ class PHPFetchPlugin(BaseFetchPlugin):
                     body = zbody
                     headers['Content-Encoding'] = 'deflate'
             headers['Content-Length'] = str(len(body))
-        skip_headers = self.skip_headers
+        skip_headers = handler.skip_headers
         metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
         metadata = deflate(metadata)
         app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
         app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
-        fetchserver = '%s?%s' % (self.fetchserver, random.random())
+        fetchserver = '%s?%s' % (self.fetchservers[0], random.random())
         crlf = 0
         cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-        response = self.create_http_request('POST', fetchserver, app_headers, app_body, timeout, crlf=crlf, cache_key=cache_key)
+        response = handler.create_http_request('POST', fetchserver, app_headers, app_body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
         if not response:
             raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
         if response.status >= 400:
@@ -472,7 +502,20 @@ class PHPFetchPlugin(BaseFetchPlugin):
         need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
-        return response
+        logging.info('%s "PHP %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
+        need_chunked = response.getheader('Transfer-Encoding')
+        while True:
+            data = response.read(8192)
+            if not data:
+                if need_chunked:
+                    handler.wfile.write('0\r\n\r\n')
+                break
+            if need_chunked:
+                handler.wfile.write('%x\r\n' % len(data))
+            handler.wfile.write(data)
+            if need_chunked:
+                handler.wfile.write('\r\n')
+            del data
 
 
 class HostsFilter(BaseProxyHandlerFilter):
@@ -630,9 +673,6 @@ class PHPProxyHandler(AdvancedProxyHandler):
             self.dns_cache[fetchhost] = list(set(fetchhost_iplist))
             logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fetchhost_iplist)
         return True
-
-
-
 
 
 class ProxyChainGAEProxyHandler(ProxyChainMixin, GAEProxyHandler):
