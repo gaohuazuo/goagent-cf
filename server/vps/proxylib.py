@@ -14,6 +14,7 @@ import binascii
 import zlib
 import itertools
 import re
+import fnmatch
 import io
 import random
 import base64
@@ -891,13 +892,13 @@ class BaseFetchPlugin(object):
     def __init__(self, *args, **kwargs):
         pass
 
-    def handle(self, handler, *args, **kwargs):
+    def handle(self, handler, **kwargs):
         raise NotImplementedError
 
 
 class MockFetchPlugin(BaseFetchPlugin):
     """mock fetch plugin"""
-    def handle(self, handler, status, headers, body):
+    def handle(self, handler, status=400, headers={}, body=''):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', handler.address_string(), handler.command, handler.path, handler.protocol_version, status, len(body))
         headers = dict((k.title(), v) for k, v in headers.items())
@@ -916,7 +917,7 @@ class MockFetchPlugin(BaseFetchPlugin):
 
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
-    def handle(self, handler, do_ssl_handshake):
+    def handle(self, handler, do_ssl_handshake=True):
         """strip connect"""
         certfile = CertUtil.get_cert(handler.host)
         logging.info('%s "STRIP %s %s:%d %s" - -', handler.address_string(), handler.command, handler.host, handler.port, handler.protocol_version)
@@ -959,14 +960,15 @@ class StripPlugin(BaseFetchPlugin):
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
     connect_timeout = 8
+    max_retry = 3
 
-    def handle(self, handler, *args, **kwargs):
+    def handle(self, handler, **kwargs):
         if handler.command != 'CONNECT':
-            return self.handle_method(handler, *args, **kwargs)
+            return self.handle_method(handler, kwargs)
         else:
-            return self.handle_connect(handler, *args, **kwargs)
+            return self.handle_connect(handler, kwargs)
 
-    def handle_method(self, handler, *args, **kwargs):
+    def handle_method(self, handler, kwargs):
         method = handler.command
         if handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = handler.path
@@ -977,7 +979,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
         response = None
         try:
             response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
-            logging.info('%s "FORWARD %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
+            logging.info('%s "DIRECT %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
             handler.send_response(response.status)
             for key, value in response.getheaders():
@@ -1008,7 +1010,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
             if response:
                 response.close()
 
-    def handle_connect(self, handler, *args, **kwargs):
+    def handle_connect(self, handler, kwargs):
         """forward socket"""
         host = handler.host
         port = handler.port
@@ -1024,8 +1026,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
         data_is_clienthello = is_clienthello(data)
         if data_is_clienthello:
             kwargs['client_hello'] = data
-        max_retry = kwargs.get('max_retry', 3)
-        for i in xrange(max_retry):
+        for i in xrange(self.max_retry):
             try:
                 remote = handler.create_tcp_connection(host, port, self.connect_timeout, **kwargs)
                 if not data_is_clienthello and remote and not isinstance(remote, Exception):
@@ -1035,13 +1036,12 @@ class DirectFetchPlugin(BaseFetchPlugin):
                 logging.exception('%s "FORWARD %s %s:%d %s" %r', handler.address_string(), handler.command, host, port, handler.protocol_version, e)
                 if hasattr(remote, 'close'):
                     remote.close()
-                if i == max_retry - 1:
+                if i == self.max_retry - 1:
                     raise
         logging.info('%s "FORWARD %s %s:%d %s" - -', handler.address_string(), handler.command, host, port, handler.protocol_version)
         if hasattr(remote, 'fileno'):
             # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
             remote.settimeout(None)
-        del kwargs
         data = data_is_clienthello and getattr(remote, 'data', None)
         if data:
             del remote.data
@@ -1058,16 +1058,66 @@ class BaseProxyHandlerFilter(object):
 class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
     """simple proxy handler filter"""
     def filter(self, handler):
-        return 'direct',
+        return 'direct', {}
 
 
 class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
     """simple proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return 'strip', True
+            return 'strip', {}
         else:
-            return 'direct',
+            return 'direct', {}
+
+
+class JumpLastFilter(BaseProxyHandlerFilter):
+    """with gae filter"""
+    def __init__(self, jumplast_sites):
+        self.jumplast_sites = set(jumplast_sites)
+
+    def filter(self, handler):
+        if handler.host in self.jumplast_sites:
+            logging.debug('JumpLastFilter metched %r %r', handler.path, handler.headers)
+            return handler.handler_filters[-1].filter(handler)
+
+
+class DirectRegionFilter(BaseProxyHandlerFilter):
+    """direct region filter"""
+    region_cache = LRUCache(16*1024)
+
+    def __init__(self, regions):
+        self.regions = set(regions)
+        try:
+            import pygeoip
+            self.geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat'))
+        except StandardError as e:
+            logging.error('DirectRegionFilter init pygeoip failed: %r', e)
+            sys.exit(-1)
+
+    def get_country_code(self, hostname, dnsservers):
+        """http://dev.maxmind.com/geoip/legacy/codes/iso3166/"""
+        try:
+            return self.region_cache[hostname]
+        except KeyError:
+            pass
+        try:
+            if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
+                iplist = [hostname]
+            elif dnsservers:
+                iplist = dnslib_record2iplist(dnslib_resolve_over_udp(hostname, dnsservers, timeout=2))
+            else:
+                iplist = socket.gethostbyname_ex(hostname)[-1]
+            country_code = self.geoip.country_code_by_addr(iplist[0])
+        except StandardError as e:
+            logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
+            country_code = ''
+        self.region_cache[hostname] = country_code
+        return country_code
+
+    def filter(self, handler):
+        country_code = self.get_country_code(handler.host, handler.dns_servers)
+        if country_code in self.regions:
+            return 'direct', {}
 
 
 class AuthFilter(BaseProxyHandlerFilter):
@@ -1098,7 +1148,7 @@ class AuthFilter(BaseProxyHandlerFilter):
                        'Proxy-Authenticate': 'Basic realm="%s"' % self.auth_info,
                        'Content-Length': '0',
                        'Connection': 'keep-alive'}
-            return 'mock', 407, headers, ''
+            return 'mock', {'status': 407, 'headers': headers, 'body': ''}
 
 
 class UserAgentFilter(BaseProxyHandlerFilter):
@@ -1121,7 +1171,7 @@ class ForceHttpsFilter(BaseProxyHandlerFilter):
             if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
                 logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
                 headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
-                return 'mock', 301, headers, ''
+                return 'mock', {'status': 301, 'headers': headers, 'body': ''}
 
 
 class FakeHttpsFilter(BaseProxyHandlerFilter):
@@ -1133,7 +1183,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
-            return 'strip', True
+            return 'strip', {}
 
 
 class URLRewriteFilter(BaseProxyHandlerFilter):
@@ -1149,7 +1199,32 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
             if m:
                 logging.debug('URLRewriteFilter metched %r', handler.path)
                 headers = {'Location': callback(m), 'Connection': 'close'}
-                return 'mock', 301, headers, ''
+                return 'mock', {'status': 301, 'headers': headers, 'body': ''}
+
+
+class AutoRangeFilter(BaseProxyHandlerFilter):
+    """auto range filter"""
+    def __init__(self, hosts_patterns, endswith_exts, noendswith_exts, maxsize):
+        self.hosts_match = [re.compile(fnmatch.translate(h)).match for h in hosts_patterns]
+        self.endswith_exts = tuple(endswith_exts)
+        self.noendswith_exts = tuple(noendswith_exts)
+        self.maxsize = int(maxsize)
+
+    def filter(self, handler):
+        path = urlparse.urlsplit(handler.path).path
+        need_autorange = any(x(handler.host) for x in self.hosts_match) or path.endswith(self.endswith_exts)
+        if path.endswith(self.noendswith_exts) or 'range=' in urlparse.urlsplit(path).query or handler.command == 'HEAD':
+            return None
+        if handler.command != 'HEAD' and handler.headers.get('Range'):
+            m = re.search(r'bytes=(\d+)-', handler.headers['Range'])
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+self.maxsize-1)
+            logging.info('autorange range=%r match url=%r', handler.headers['Range'], handler.path)
+        elif need_autorange:
+            logging.info('Found [autorange]endswith match url=%r', handler.path)
+            m = re.search(r'bytes=(\d+)-', handler.headers.get('Range', ''))
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+self.maxsize-1)
 
 
 class StaticFileFilter(BaseProxyHandlerFilter):
@@ -1187,7 +1262,7 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 if not os.path.isfile(index_file):
                     content = self.format_index_html(path).encode('UTF-8')
                     headers = {'Content-Type': 'text/html; charset=utf-8', 'Connection': 'close'}
-                    return 'mock', 200, headers, content
+                    return 'mock', {'status': 200, 'headers': headers, 'body': content}
                 else:
                     path = index_file
             if os.path.isfile(path):
@@ -1200,7 +1275,7 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 with open(path, 'rb') as fp:
                     content = fp.read()
                     headers = {'Connection': 'close', 'Content-Type': content_type}
-                    return 'mock', 200, headers, content
+                    return 'mock', {'status': 200, 'headers': headers, 'body': content}
 
 
 class BlackholeFilter(BaseProxyHandlerFilter):
@@ -1209,7 +1284,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return 'strip', True
+            return 'strip', {}
         elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
@@ -1218,9 +1293,9 @@ class BlackholeFilter(BaseProxyHandlerFilter):
             if urlparse.urlsplit(handler.path).path.lower().endswith(('.jpg', '.gif', '.png', '.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
-            return 'mock', 200, headers, content
+            return 'mock', {'status': 200, 'headers': headers, 'body': content}
         else:
-            return 'mock', 404, {'Connection': 'close'}, ''
+            return 'mock', {'status': 404, 'headers': {'Connection': 'close'}, 'body': ''}
 
 
 class SimpleProxyHandler(BaseHTTPRequestHandler):
@@ -1229,11 +1304,22 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     bufsize = 256*1024
     protocol_version = 'HTTP/1.1'
     ssl_version = ssl.PROTOCOL_SSLv23
+    skip_headers = frozenset(['Vary',
+                              'Via',
+                              'X-Forwarded-For',
+                              'Proxy-Authorization',
+                              'Proxy-Connection',
+                              'Upgrade',
+                              'X-Chrome-Variations',
+                              'Connection',
+                              'Cache-Control'])
     disable_transport_ssl = True
     scheme = 'http'
     first_run_lock = threading.Lock()
     handler_filters = [SimpleProxyHandlerFilter()]
-    handler_plugins = {'direct': DirectFetchPlugin()}
+    handler_plugins = {'direct': DirectFetchPlugin(),
+                       'mock': MockFetchPlugin(),
+                       'strip': StripPlugin(),}
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
@@ -1342,13 +1428,13 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
             if not isinstance(action, tuple):
                 raise TypeError('%s must return a tuple, not %r' % (handler_filter, action))
             plugin = self.handler_plugins[action[0]]
-            return plugin.handle(self, *action[1:])
+            return plugin.handle(self, **action[1])
 
 
-class MultipleConnectionMixin:
+class MultipleConnectionMixin(object):
     """Multiple Connection Mixin"""
     dns_cache = LRUCache(64*1024)
-    dns_servers = []
+    dns_servers = ['8.8.8.8', '114.114.114.114']
     dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
     tcp_connection_time_with_clienthello = collections.defaultdict(float)
@@ -1364,15 +1450,6 @@ class MultipleConnectionMixin:
     ssl_version = ssl.PROTOCOL_TLSv1
     ssl_connection_keepalive = False
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
-    skip_headers = frozenset(['Vary',
-                              'Via',
-                              'X-Forwarded-For',
-                              'Proxy-Authorization',
-                              'Proxy-Connection',
-                              'Upgrade',
-                              'X-Chrome-Variations',
-                              'Connection',
-                              'Cache-Control'])
 
     def gethostbyname2(self, hostname):
         try:
@@ -1491,7 +1568,7 @@ class MultipleConnectionMixin:
             raise sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key')
+        cache_key = kwargs.get('cache_key', '')
         validate = kwargs.get('validate')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1693,7 +1770,7 @@ class MultipleConnectionMixin:
         if isinstance(sock, Exception):
             raise sock
 
-    def create_http_request(self, method, url, headers, body, timeout, max_retry=2, bufsize=8192, crlf=None, validate=None, cache_key=None):
+    def create_http_request(self, method, url, headers, body, timeout, max_retry=2, bufsize=8192, crlf=None, validate=None, cache_key=None, **kwargs):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1787,7 +1864,7 @@ class MultipleConnectionMixin:
         return response
 
 
-class ProxyConnectionMixin:
+class ProxyConnectionMixin(object):
     """Proxy Connection Mixin"""
     def __init__(self, host, port, username='', password=''):
         self.host = host
@@ -1827,7 +1904,6 @@ class ProxyConnectionMixin:
 def test():
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     SimpleProxyHandler.handler_filters.insert(0, MIMTProxyHandlerFilter())
-    SimpleProxyHandler.handler_plugins['strip'] = StripPlugin()
     server = LocalProxyServer(('', 8080), SimpleProxyHandler)
     server.serve_forever()
 
