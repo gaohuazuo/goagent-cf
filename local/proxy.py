@@ -172,41 +172,41 @@ class Logging(type(sys)):
 logging = sys.modules['logging'] = Logging('logging')
 
 
+from proxylib import AuthFilter
+from proxylib import AutoRangeFilter
+from proxylib import BaseFetchPlugin
+from proxylib import BaseProxyHandlerFilter
+from proxylib import BlackholeFilter
 from proxylib import CertUtil
+from proxylib import CipherFileObject
+from proxylib import deflate
+from proxylib import DirectFetchPlugin
+from proxylib import DirectRegionFilter
+from proxylib import dnslib_record2iplist
 from proxylib import dnslib_resolve_over_tcp
 from proxylib import dnslib_resolve_over_udp
-from proxylib import dnslib_record2iplist
-from proxylib import SSLConnection
-from proxylib import ProxyUtil
-from proxylib import inflate
-from proxylib import deflate
-from proxylib import get_dnsserver_list
-from proxylib import spawn_later
-from proxylib import AuthFilter
-from proxylib import BlackholeFilter
-from proxylib import UserAgentFilter
-from proxylib import URLRewriteFilter
-from proxylib import BaseProxyHandlerFilter
-from proxylib import CipherFileObject
-from proxylib import RC4Cipher
 from proxylib import FakeHttpsFilter
 from proxylib import ForceHttpsFilter
-from proxylib import StaticFileFilter
-from proxylib import AutoRangeFilter
-from proxylib import DirectRegionFilter
-from proxylib import JumpLastFilter
+from proxylib import get_dnsserver_list
 from proxylib import get_process_list
 from proxylib import get_uptime
+from proxylib import inflate
+from proxylib import JumpLastFilter
 from proxylib import LocalProxyServer
-from proxylib import XORCipher
-from proxylib import BaseFetchPlugin
-from proxylib import SimpleProxyHandler
+from proxylib import message_html
+from proxylib import MockFetchPlugin
 from proxylib import MultipleConnectionMixin
 from proxylib import ProxyConnectionMixin
-from proxylib import DirectFetchPlugin
-from proxylib import MockFetchPlugin
+from proxylib import ProxyUtil
+from proxylib import RC4Cipher
+from proxylib import SimpleProxyHandler
+from proxylib import spawn_later
+from proxylib import SSLConnection
+from proxylib import StaticFileFilter
 from proxylib import StripPlugin
-from proxylib import message_html
+from proxylib import URLRewriteFilter
+from proxylib import UserAgentFilter
+from proxylib import XORCipher
 
 
 def is_google_ip(ipaddr):
@@ -221,9 +221,11 @@ class RangeFetch(object):
     bufsize = 8192
     waitsize = 1024*512
 
-    def __init__(self, handler, response, fetchservers, **kwargs):
+    def __init__(self, handler, plugin, response, fetchservers, **kwargs):
+        assert isinstance(plugin, BaseFetchPlugin) and hasattr(plugin, 'fetch')
         self.handler = handler
         self.url = handler.path
+        self.plugin = plugin
         self.response = response
         self.fetchservers = fetchservers
         self.kwargs = kwargs
@@ -316,7 +318,7 @@ class RangeFetch(object):
                         fetchserver = random.choice(self.fetchservers)
                         if self._last_app_status.get(fetchserver, 200) >= 500:
                             time.sleep(5)
-                        response = self.handler.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, **self.kwargs)
+                        response = self.plugin.create_http_request_withserver(fetchserver, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, **self.kwargs)
                 except Queue.Empty:
                     continue
                 except StandardError as e:
@@ -397,10 +399,19 @@ class GAEFetchPlugin(BaseFetchPlugin):
 
     def handle(self, handler):
         assert handler.command != 'CONNECT'
+        method = handler.command
+        headers = dict((k.title(), v) for k, v in handler.headers.items())
+        body = handler.body
+        if handler.path[0] == '/':
+            url = '%s://%s%s' % (handler.scheme, handler.headers['Host'], handler.path)
+        elif handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
+            url = handler.path
+        else:
+            raise ValueError('URLFETCH %r is not a valid url' % handler.path)
         errors = []
         for i in xrange(self.max_retry):
             try:
-                response = self.get_response(handler)
+                response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
                 if response.app_status < 400:
                     break
                 else:
@@ -430,7 +441,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
         logging.info('%s "GAE %s %s %s" %s %s', handler.address_string(), handler.command, handler.path, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
         try:
             if response.status == 206:
-                return RangeFetch(handler, response, fetchservers).fetch()
+                fetchservers = ['%s://%s.appspot.com%s' % (self.mode, x, self.path) for x in self.appids]
+                return RangeFetch(handler, self, response, fetchservers).fetch()
             handler.close_connection = not response.getheader('Content-Length')
             handler.send_response(response.status)
             for key, value in response.getheaders():
@@ -458,16 +470,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
             if e[0] in (errno.ECONNABORTED, errno.EPIPE) or 'bad write retry' in repr(e):
                 return
 
-    def get_response(self, handler):
-        if handler.path[0] == '/':
-            url = '%s://%s%s' % (handler.scheme, handler.headers['Host'], handler.path)
-        elif handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
-            url = handler.path
-        else:
-            raise ValueError('URLFETCH %r is not a valid url' % handler.path)
-        method = handler.command
-        headers = dict((k.title(), v) for k, v in handler.headers.items())
-        body = handler.body
+    def fetch(self, handler, method, url, headers, body, timeout, **kwargs):
         rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
         if isinstance(body, basestring) and body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
