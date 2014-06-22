@@ -397,7 +397,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         self.validate = validate
         self.options = options
 
-    def handle(self, handler):
+    def handle(self, handler, **kwargs):
         assert handler.command != 'CONNECT'
         method = handler.command
         headers = dict((k.title(), v) for k, v in handler.headers.items())
@@ -552,7 +552,7 @@ class PHPFetchPlugin(BaseFetchPlugin):
         self.password = password
         self.validate = validate
 
-    def handle(self, handler, fetchserver, **kwargs):
+    def handle(self, handler, **kwargs):
         method = handler.command
         url = handler.path
         headers = dict((k.title(), v) for k, v in handler.headers.items())
@@ -578,9 +578,9 @@ class PHPFetchPlugin(BaseFetchPlugin):
         if response.status >= 400:
             return response
         response.app_status = response.status
-        need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
+        need_decrypt = self.password and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
-            response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
+            response.fp = CipherFileObject(response.fp, XORCipher(self.password[0]))
         logging.info('%s "PHP %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
         need_chunked = response.getheader('Transfer-Encoding')
         while True:
@@ -707,6 +707,20 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
         return MultipleConnectionMixin.gethostbyname2(self, hostname)
 
 
+class ProxyGAEProxyHandler(ProxyConnectionMixin, GAEProxyHandler):
+
+    def __init__(self, *args, **kwargs):
+        ProxyConnectionMixin.__init__(self, common.PROXY_HOST, common.PROXY_PORT, common.PROXY_USERNAME, common.PROXY_PASSWROD)
+        GAEProxyHandler.__init__(self, *args, **kwargs)
+
+    def gethostbyname2(self, hostname):
+        for postfix in ('.appspot.com', '.googleusercontent.com'):
+            if hostname.endswith(postfix):
+                host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP.get(postfix) or 'www.google.com'
+                return common.IPLIST_MAP.get(host) or host.split('|')
+        return ProxyConnectionMixin.gethostbyname2(self, hostname)
+
+
 class PHPFetchFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
@@ -714,6 +728,29 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
             return 'strip', {}
         else:
             return 'php', {}
+
+
+class PHPProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
+    """GAE Proxy Handler"""
+    handler_filters = [PHPFetchFilter()]
+    handler_plugins = {'direct': DirectFetchPlugin(),
+                       'mock': MockFetchPlugin(),
+                       'strip': StripPlugin(),}
+
+    def __init__(self, *args, **kwargs):
+        SimpleProxyHandler.__init__(self, *args, **kwargs)
+
+    def first_run(self):
+        self.__class__.handler_plugins['php'] = PHPFetchPlugin(common.PHP_FETCHSERVERS, common.PHP_PASSWORD, common.PHP_VALIDATE)
+
+
+class ProxyPHPProxyHandler(ProxyConnectionMixin, PHPProxyHandler):
+
+    def __init__(self, *args, **kwargs):
+        PHPProxyHandler.__init__(self, *args, **kwargs)
+
+    def gethostbyname2(self, hostname):
+        return [hostname]
 
 
 class PacUtil(object):
@@ -1216,7 +1253,7 @@ class Common(object):
         self.PHP_PASSWORD = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
         self.PHP_CRLF = self.CONFIG.getint('php', 'crlf') if self.CONFIG.has_option('php', 'crlf') else 1
         self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
-        self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
+        self.PHP_FETCHSERVERS = self.CONFIG.get('php', 'fetchserver').split('|')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
@@ -1353,7 +1390,7 @@ class Common(object):
             info += 'Pac File           : file://%s\n' % os.path.abspath(self.PAC_FILE)
         if common.PHP_ENABLE:
             info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
-            info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
+            info += 'PHP FetchServers   : %s\n' % common.PHP_FETCHSERVERS
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
             info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_SERVERS)
@@ -1478,7 +1515,7 @@ def main():
     #uvent_enabled = 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop)
     if common.PHP_ENABLE:
         host, port = common.PHP_LISTEN.split(':')
-        HandlerClass = PHPProxyHandler if not common.PROXY_ENABLE else ProxyChainPHPProxyHandler
+        HandlerClass = PHPProxyHandler if not common.PROXY_ENABLE else ProxyPHPProxyHandler
         server = LocalProxyServer((host, int(port)), HandlerClass)
         thread.start_new_thread(server.serve_forever, tuple())
 
@@ -1498,7 +1535,7 @@ def main():
             sys.exit(-1)
 
     if common.GAE_ENABLE:
-        HandlerClass = GAEProxyHandler if not common.PROXY_ENABLE else ProxyChainGAEProxyHandler
+        HandlerClass = GAEProxyHandler if not common.PROXY_ENABLE else ProxyGAEProxyHandler
         server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), HandlerClass)
         try:
             server.serve_forever()
