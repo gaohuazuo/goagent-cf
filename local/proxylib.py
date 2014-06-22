@@ -1060,7 +1060,7 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
 
 
 class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
-    """simple proxy handler filter"""
+    """mimt proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
             return 'strip', {}
