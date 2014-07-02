@@ -37,7 +37,11 @@ import ctypes.util
 from PyObjCTools import AppHelper
 from AppKit import *
 
+ColorSet=[NSColor.blackColor(), NSColor.colorWithDeviceRed_green_blue_alpha_(0.7578125,0.2109375,0.12890625,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.14453125,0.734375,0.140625,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.67578125,0.67578125,0.15234375,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.28515625,0.1796875,0.87890625,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.82421875,0.21875,0.82421875,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.19921875,0.73046875,0.78125,1.0), NSColor.colorWithDeviceRed_green_blue_alpha_(0.79296875,0.796875,0.80078125,1.0)]
+
 class GoAgentOSX(NSObject):
+
+    console_color=ColorSet[0]
 
     def applicationDidFinishLaunching_(self, notification):
         self.setupUI()
@@ -93,6 +97,7 @@ class GoAgentOSX(NSObject):
         self.scroll_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
         self.console_view = NSTextView.alloc().initWithFrame_(frame)
+        self.console_view.setRichText_(True)
         self.console_view.setVerticallyResizable_(True)
         self.console_view.setHorizontallyResizable_(True)
         self.console_view.setAutoresizingMask_(NSViewWidthSizable)
@@ -123,9 +128,24 @@ class GoAgentOSX(NSObject):
     def stopGoAgent(self):
         self.pipe.terminate()
 
+    def parseLine(self, line):
+        while line.startswith('\x1b['):
+            line = line[2:]
+            color_number = int(line.split('m',1)[0])
+            print color_number
+            if 30 <= color_number < 38:
+                self.console_color = ColorSet[color_number-30]
+            elif color_number == 0:
+                self.console_color = ColorSet[0]
+            line = line.split('m',1)[1]
+        return line
+
     def refreshDisplay_(self, line):
         #print line
-        self.console_view.textStorage().mutableString().appendString_(line)
+        line = self.parseLine(line)
+        console_line = NSMutableAttributedString.alloc().initWithString_(line)
+        console_line.addAttribute_value_range_(NSForegroundColorAttributeName, self.console_color, NSMakeRange(0,len(line)))
+        self.console_view.textStorage().appendAttributedString_(console_line)
         need_scroll = NSMaxY(self.console_view.visibleRect()) >= NSMaxY(self.console_view.bounds())
         if need_scroll:
             range = NSMakeRange(len(self.console_view.textStorage().mutableString()), 0)
