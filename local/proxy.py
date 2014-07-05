@@ -975,6 +975,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         self.__class__.do_CONNECT = self.__class__.do_METHOD
         self.__class__.do_GET = self.__class__.do_METHOD
+        self.__class__.do_PATCH = self.__class__.do_METHOD
         self.__class__.do_PUT = self.__class__.do_METHOD
         self.__class__.do_POST = self.__class__.do_METHOD
         self.__class__.do_HEAD = self.__class__.do_METHOD
