@@ -961,7 +961,7 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 8
+    connect_timeout = 4
     max_retry = 3
 
     def handle(self, handler, **kwargs):
