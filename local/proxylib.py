@@ -1190,7 +1190,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
 class URLRewriteFilter(BaseProxyHandlerFilter):
     """url rewrite filter"""
     rules = {
-                'www.google.com': (r'^https?://www\.google\.com/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+                'www.google.com': (r'^https?://www\.google\.com/(?:imgres|url)\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
                 'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
             }
     def filter(self, handler):
