@@ -93,7 +93,6 @@ except ImportError:
 
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
-
 class Logging(type(sys)):
     CRITICAL = 50
     FATAL = CRITICAL
@@ -575,8 +574,6 @@ class PHPFetchPlugin(BaseFetchPlugin):
         response = handler.create_http_request('POST', fetchserver, app_headers, app_body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
         if not response:
             raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
-        if response.status >= 400:
-            return response
         response.app_status = response.status
         need_decrypt = self.password and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
@@ -1543,6 +1540,8 @@ def main():
             if '(libev) select: ' in repr(e):
                 logging.error('PLEASE START GOAGENT BY uvent.bat')
                 sys.exit(-1)
+    else:
+        gevent.sleep(sys.maxint)
 
 if __name__ == '__main__':
     main()
