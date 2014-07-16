@@ -856,7 +856,11 @@ class BaseHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return socket.gethostbyname_ex(hostname)[-1]
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        return socket.create_connection((hostname, port), timeout)
+        sock = socket.create_connection((hostname, port), timeout)
+        data = kwargs.get('client_hello')
+        if data:
+            sock.send(data)
+        return sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
@@ -883,8 +887,6 @@ class BaseHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         return response
-
-
 
 
 class BaseFetchPlugin(object):
@@ -959,7 +961,7 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 8
+    connect_timeout = 4
     max_retry = 3
 
     def handle(self, handler, **kwargs):
@@ -1046,7 +1048,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
         if data:
             del remote.data
             local.sendall(data)
-        forward_socket(local, remote, handler.max_timeout, bufsize=256*1024)
+        forward_socket(local, remote, 60, bufsize=256*1024)
 
 
 class BaseProxyHandlerFilter(object):
@@ -1062,13 +1064,12 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
 
 
 class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
-    """simple proxy handler filter"""
+    """mimt proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
             return 'strip', {}
         else:
             return 'direct', {}
-
 
 class JumpLastFilter(BaseProxyHandlerFilter):
     """with gae filter"""
@@ -1189,7 +1190,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
 class URLRewriteFilter(BaseProxyHandlerFilter):
     """url rewrite filter"""
     rules = {
-                'www.google.com': (r'^https?://www\.google\.com/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
+                'www.google.com': (r'^https?://www\.google\.com/(?:imgres|url)\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
                 'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
             }
     def filter(self, handler):
@@ -1866,11 +1867,11 @@ class MultipleConnectionMixin(object):
 
 class ProxyConnectionMixin(object):
     """Proxy Connection Mixin"""
-    def __init__(self, host, port, username='', password=''):
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
+    def __init__(self, proxy_host, proxy_port, proxy_username='', proxy_password=''):
+        self.proxy_host = proxy_host
+        self.proxy_port = proxy_port
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
 
     def gethostbyname2(self, hostname):
         try:
@@ -1879,12 +1880,12 @@ class ProxyConnectionMixin(object):
             return [hostname]
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        sock = socket.create_connection((self.host, int(self.port)))
+        sock = socket.create_connection((self.proxy_host, int(self.proxy_port)))
         if hostname.endswith('.appspot.com'):
             hostname = 'www.google.com'
         request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
-        if self.username and self.password:
-            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (self.username, self.password)).encode()).decode().strip()
+        if self.proxy_username and self.proxy_password:
+            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (self.proxy_username, self.proxy_password)).encode()).decode().strip()
         request_data += '\r\n'
         sock.sendall(request_data)
         response = httplib.HTTPResponse(sock)
@@ -1903,8 +1904,9 @@ class ProxyConnectionMixin(object):
 
 def test():
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    SimpleProxyHandler.handler_filters.insert(0, MIMTProxyHandlerFilter())
+    # SimpleProxyHandler.handler_filters.insert(0, MIMTProxyHandlerFilter())
     server = LocalProxyServer(('', 8080), SimpleProxyHandler)
+    logging.info('serving at %r', server.server_address)
     server.serve_forever()
 
 
