@@ -408,6 +408,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         else:
             raise ValueError('URLFETCH %r is not a valid url' % handler.path)
         errors = []
+        response = None
         for i in xrange(self.max_retry):
             try:
                 response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
