@@ -823,6 +823,7 @@ def deprecated_forward_socket(local, remote, timeout, bufsize):
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     """Local Proxy Server"""
+    request_queue_size = 256
     allow_reuse_address = True
     daemon_threads = True
 
