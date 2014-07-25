@@ -1385,6 +1385,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
         self.__class__.do_HEAD = self.__class__.do_METHOD
         self.__class__.do_DELETE = self.__class__.do_METHOD
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
+        self.__class__.do_PATCH = self.__class__.do_METHOD
         self.setup()
 
     def handle_one_request(self):

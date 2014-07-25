@@ -40,6 +40,10 @@
 #      hub01             <miaojiabumiao@yeah.net>
 #      v3aqb             <sgzz.cj@gmail.com>
 #      Oling Cat         <olingcat@gmail.com>
+#      Meng Zhuo         <mengzhuo1203@gmail.com>
+#      zwhfly            <zwhfly@163.com>
+#      Hubertzhang       <hubert.zyk@gmail.com>
+#      arrix             <arrixzhou@gmail.com>
 
 __version__ = '3.1.18'
 
