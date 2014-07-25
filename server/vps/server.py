@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding:utf-8
 
+raise NotImplementedError('Coming soon...')
+
 __version__ = '3.1.18'
 
 import sys
