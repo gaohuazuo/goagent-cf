@@ -823,6 +823,7 @@ def deprecated_forward_socket(local, remote, timeout, bufsize):
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     """Local Proxy Server"""
+    request_queue_size = 256
     allow_reuse_address = True
     daemon_threads = True
 
@@ -931,6 +932,8 @@ class StripPlugin(BaseFetchPlugin):
             except StandardError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
+                handler.connection.shutdown(socket.SHUT_RDWR)
+                handler.connection.close()
                 return
             handler.connection = ssl_sock
             handler.rfile = handler.connection.makefile('rb', handler.bufsize)
@@ -943,14 +946,24 @@ class StripPlugin(BaseFetchPlugin):
                 handler.request_version = ''
                 handler.command = ''
                 handler.send_error(414)
+                handler.wfile.close()
                 return
             if not handler.raw_requestline:
                 handler.close_connection = 1
+                handler.connection.shutdown(socket.SHUT_RDWR)
+                handler.connection.close()
                 return
             if not handler.parse_request():
+                handler.send_error(400)
+                handler.wfile.close()
                 return
         except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+            if e.args[0] in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                handler.close_connection = 1
+                handler.connection.shutdown(socket.SHUT_RDWR)
+                handler.connection.close()
+                return
+            else:
                 raise
         try:
             handler.do_METHOD()
@@ -1858,6 +1871,7 @@ class MultipleConnectionMixin(object):
             response = httplib.HTTPResponse(sock)
             response.fp.close()
             response.fp = sock.makefile('rb')
+        sock.settimeout(self.connect_timeout)
         response.begin()
         if self.ssl_connection_keepalive and scheme == 'https' and cache_key:
             response.cache_key = cache_key
