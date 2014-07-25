@@ -45,7 +45,7 @@
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
 
-__version__ = '3.1.18'
+__version__ = '3.1.20'
 
 import sys
 import os
