@@ -932,6 +932,7 @@ class StripPlugin(BaseFetchPlugin):
             except StandardError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
+                handler.connection.close()
                 return
             handler.connection = ssl_sock
             handler.rfile = handler.connection.makefile('rb', handler.bufsize)
@@ -949,6 +950,7 @@ class StripPlugin(BaseFetchPlugin):
                 handler.close_connection = 1
                 return
             if not handler.parse_request():
+                handler.send_error(400)
                 return
         except NetWorkIOError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
