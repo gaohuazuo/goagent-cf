@@ -520,6 +520,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+        cache_key = ''
         response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
@@ -656,6 +657,7 @@ class HostsFilter(BaseProxyHandlerFilter):
                 filename = filename.lstrip('/')
             return self.filter_localfile(handler, filename)
         cache_key = '%s:%s' % (hostname, port)
+        cache_key = ''
         if handler.command == 'CONNECT':
             return 'direct', {'connect_kwargs': {'cache_key': cache_key}}
         else:
