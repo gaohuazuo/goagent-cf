@@ -1115,6 +1115,8 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
+            if hostname.startswith('127.') or hostname.startswith('192.168.') or hostname.startswith('10.'):
+                return 'LOCAL'
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
             elif dnsservers:
