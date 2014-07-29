@@ -48,26 +48,19 @@
 __version__ = '3.1.20'
 
 import sys
-import sysconfig
 import os
-import glob
+import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
 sys.path += [os.path.abspath(os.path.join(__file__, '../packages.egg/%s' % x)) for x in ('noarch', sysconfig.get_platform().split('-')[0])]
 
-try:
-    import gevent
-    import gevent.socket
-    import gevent.server
-    import gevent.queue
-    import gevent.monkey
-    gevent.monkey.patch_all(subprocess=True)
-except ImportError:
-    gevent = None
-except TypeError:
-    gevent.monkey.patch_all()
-    sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
+import gevent
+import gevent.socket
+import gevent.server
+import gevent.queue
+import gevent.monkey
+gevent.monkey.patch_all(subprocess=True)
 
 import errno
 import time
