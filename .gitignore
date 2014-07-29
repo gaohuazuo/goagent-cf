@@ -5,6 +5,5 @@
 *.pac
 *.key
 *.crt
-*.egg
 *.pid
 *.user.ini

@@ -48,12 +48,13 @@
 __version__ = '3.1.20'
 
 import sys
+import sysconfig
 import os
 import glob
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
-sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
+sys.path += [os.path.abspath(os.path.join(__file__, '../packages.egg/%s' % x)) for x in ('noarch', sysconfig.get_platform().split('-')[0])]
 
 try:
     import gevent
