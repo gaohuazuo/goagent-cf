@@ -1085,7 +1085,7 @@ class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
             return 'direct', {}
 
 class JumpLastFilter(BaseProxyHandlerFilter):
-    """with gae filter"""
+    """jumplast(aka withgae) filter"""
     def __init__(self, jumplast_sites):
         self.jumplast_sites = set(jumplast_sites)
 
@@ -1200,6 +1200,19 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
         if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
             return 'strip', {}
+
+
+class CRLFSitesFilter(BaseProxyHandlerFilter):
+    """crlf sites filter"""
+    def __init__(self, crlf_sites):
+        self.crlf_sites = set(crlf_sites)
+
+    def filter(self, handler):
+        if handler.command != 'CONNECT' and handler.scheme != 'https':
+            if handler.host.endswith(self.crlf_sites):
+                logging.debug('CRLFSitesFilter metched %r %r', handler.path, handler.headers)
+                handler.close_connection = True
+                return 'direct', {'crlf': True}
 
 
 class URLRewriteFilter(BaseProxyHandlerFilter):

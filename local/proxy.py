@@ -180,6 +180,7 @@ from proxylib import dnslib_resolve_over_tcp
 from proxylib import dnslib_resolve_over_udp
 from proxylib import FakeHttpsFilter
 from proxylib import ForceHttpsFilter
+from proxylib import CRLFSitesFilter
 from proxylib import get_dnsserver_list
 from proxylib import get_process_list
 from proxylib import get_uptime
@@ -452,10 +453,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 if not data:
                     cache_sock = getattr(response, 'cache_sock', None)
                     if cache_sock:
-                        if handler.scheme == 'https':
-                            handler.ssl_connection_cache[response.cache_key].put((time.time(), cache_sock))
-                        else:
-                            cache_sock.close()
+                        cache_sock.close()
                         del response.cache_sock
                     response.close()
                     break
@@ -590,9 +588,21 @@ class PHPFetchPlugin(BaseFetchPlugin):
             del data
 
 
-class HostsFilter(BaseProxyHandlerFilter):
-    """force https filter"""
-    def filter_localfile(self, handler, filename):
+class LocalfileFilter(BaseProxyHandlerFilter):
+    """local file filter"""
+    def __init__(self, localfile_map):
+        self.localfile_map = set(localfile_map)
+
+    def filter(self, handler):
+        filename = ''
+        for match in self.localfile_map:
+            if match(handler.path):
+                filename = self.localfile_map[match].lstrip('file://')
+                if os.name == 'nt':
+                    filename = filename.lstrip('/')
+                break
+        if not filename:
+            return
         content_type = None
         try:
             import mimetypes
@@ -608,6 +618,9 @@ class HostsFilter(BaseProxyHandlerFilter):
                 return 'mock', {'status': 200, 'headers': headers, 'body': data}
         except StandardError as e:
             return 'mock', {'status': 403, 'headers': {'Connection': 'close'}, 'body': 'read %r %r' % (filename, e)}
+
+
+class HostsFilter(BaseProxyHandlerFilter):
 
     def filter(self, handler):
         host, port = handler.host, handler.port
@@ -641,21 +654,7 @@ class HostsFilter(BaseProxyHandlerFilter):
                 logging.warning('HostsFilter dnslib_resolve_over_tcp %r with %r failed: %r', host, handler.dns_servers, e)
         elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
             handler.dns_cache[host] = [hostname]
-        elif hostname.startswith('file://'):
-            filename = hostname.lstrip('file://')
-            if os.name == 'nt':
-                filename = filename.lstrip('/')
-            return self.filter_localfile(handler, filename)
-        cache_key = '%s:%s' % (hostname, port)
-        cache_key = ''
-        if handler.command == 'CONNECT':
-            return 'direct', {'connect_kwargs': {'cache_key': cache_key}}
-        else:
-            if host.endswith(common.CRLF_SITES):
-                handler.close_connection = True
-                return 'direct', {'crlf': True}
-            else:
-                return 'direct', {'cache_key': cache_key}
+        return 'direct', {}
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
@@ -1170,6 +1169,7 @@ class Common(object):
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
             self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
 
+        localfile_map = collections.OrderedDict()
         host_map = collections.OrderedDict()
         host_postfix_map = collections.OrderedDict()
         hostport_map = collections.OrderedDict()
@@ -1188,6 +1188,8 @@ class Common(object):
             if site == 'dns':
                 dns_servers = rules
                 continue
+            if rule.startswith('file://'):
+                localfile_map[re.compile(site).search] = rule
             for name, sites in [('withgae', withgae_sites),
                                 ('crlf', crlf_sites),
                                 ('forcehttps', forcehttps_sites),
@@ -1222,6 +1224,7 @@ class Common(object):
         self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
         self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
         self.NOFAKEHTTPS_SITES = set(nofakehttps_sites)
+        self.LOCALFILE_MAP = localfile_map
         self.HOSTPORT_MAP = hostport_map
         self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
         self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
@@ -1475,6 +1478,8 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, HostsFilter())
     if True:
         GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
+    if common.CRLF_SITES:
+        GAEProxyHandler.handler_filters.insert(0, CRLFSitesFilter(common.CRLF_SITES))
     if common.FAKEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
     if common.FORCEHTTPS_SITES:
@@ -1483,6 +1488,8 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, JumpLastFilter(common.WITHGAE_SITES))
     if common.USERAGENT_ENABLE:
         GAEProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
+    if common.LOCALFILE_MAP:
+        GAEProxyHandler.handler_filters.insert(0, LocalfileFilter(common.LOCALFILE_MAP))
     if common.LISTEN_USERNAME:
         GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
 
