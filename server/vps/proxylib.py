@@ -1085,7 +1085,7 @@ class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
             return 'direct', {}
 
 class JumpLastFilter(BaseProxyHandlerFilter):
-    """with gae filter"""
+    """jumplast(aka withgae) filter"""
     def __init__(self, jumplast_sites):
         self.jumplast_sites = set(jumplast_sites)
 
@@ -1115,6 +1115,8 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
+            if hostname.startswith('127.') or hostname.startswith('192.168.') or hostname.startswith('10.'):
+                return 'LOCAL'
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
             elif dnsservers:
@@ -1198,6 +1200,19 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
         if handler.command == 'CONNECT' and handler.host.endswith(self.fakehttps_sites) and handler.host not in self.nofakehttps_sites:
             logging.debug('FakeHttpsFilter metched %r %r', handler.path, handler.headers)
             return 'strip', {}
+
+
+class CRLFSitesFilter(BaseProxyHandlerFilter):
+    """crlf sites filter"""
+    def __init__(self, crlf_sites):
+        self.crlf_sites = tuple(crlf_sites)
+
+    def filter(self, handler):
+        if handler.command != 'CONNECT' and handler.scheme != 'https':
+            if handler.host.endswith(self.crlf_sites):
+                logging.debug('CRLFSitesFilter metched %r %r', handler.path, handler.headers)
+                handler.close_connection = True
+                return 'direct', {'crlf': True}
 
 
 class URLRewriteFilter(BaseProxyHandlerFilter):
@@ -1453,17 +1468,20 @@ class MultipleConnectionMixin(object):
     dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
     tcp_connection_time_with_clienthello = collections.defaultdict(float)
-    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
-    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_good_ipaddrs = {}
     ssl_connection_bad_ipaddrs = {}
     ssl_connection_unknown_ipaddrs = {}
+    tcp_connection_cachesock = False
+    tcp_connection_keepalive = False
+    ssl_connection_cachesock = False
+    ssl_connection_keepalive = False
+    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     max_window = 4
     connect_timeout = 4
     max_timeout = 8
     ssl_version = ssl.PROTOCOL_TLSv1
-    ssl_connection_keepalive = False
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
 
     def gethostbyname2(self, hostname):
@@ -1485,7 +1503,7 @@ class MultipleConnectionMixin(object):
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         client_hello = kwargs.get('client_hello', None)
-        cache_key = kwargs.get('cache_key') if not client_hello else None
+        cache_key = kwargs.get('cache_key', '') if self.tcp_connection_cachesock and not client_hello else ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1493,6 +1511,8 @@ class MultipleConnectionMixin(object):
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
                 # set reuseaddr option to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 # disable nagle algorithm to send http request quickly.
@@ -1583,7 +1603,7 @@ class MultipleConnectionMixin(object):
             raise sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key', '')
+        cache_key = kwargs.get('cache_key', '') if self.ssl_connection_cachesock else ''
         validate = kwargs.get('validate')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1593,6 +1613,8 @@ class MultipleConnectionMixin(object):
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
                 # set reuseaddr option to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 # disable negal algorithm to send http request quickly.
@@ -1661,6 +1683,8 @@ class MultipleConnectionMixin(object):
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
                 # set reuseaddr option to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 # disable negal algorithm to send http request quickly.
@@ -1874,7 +1898,7 @@ class MultipleConnectionMixin(object):
             response.fp = sock.makefile('rb')
         sock.settimeout(self.connect_timeout)
         response.begin()
-        if self.ssl_connection_keepalive and scheme == 'https' and cache_key:
+        if ((scheme == 'https' and self.ssl_connection_cachesock and self.ssl_connection_keepalive) or (scheme == 'http' and self.tcp_connection_cachesock and self.tcp_connection_keepalive)) and cache_key:
             response.cache_key = cache_key
             response.cache_sock = response.fp._sock
         return response

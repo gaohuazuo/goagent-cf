@@ -1205,7 +1205,7 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
 class CRLFSitesFilter(BaseProxyHandlerFilter):
     """crlf sites filter"""
     def __init__(self, crlf_sites):
-        self.crlf_sites = set(crlf_sites)
+        self.crlf_sites = tuple(crlf_sites)
 
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.scheme != 'https':
