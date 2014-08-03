@@ -5,9 +5,9 @@ __version__ = '1.0'
 
 import sys
 import os
-import glob
+import sysconfig
 
-sys.path += glob.glob('*.egg')
+sys.path += [os.path.abspath(os.path.join(__file__, '../packages.egg/%s' % x)) for x in ('noarch', sysconfig.get_platform().split('-')[0])]
 
 import gevent
 import gevent.server
