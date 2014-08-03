@@ -84,8 +84,6 @@ import ConfigParser
 import urllib2
 
 import OpenSSL
-import dnslib
-import pygeoip
 
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
