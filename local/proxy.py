@@ -82,12 +82,10 @@ import ssl
 import Queue
 import ConfigParser
 import urllib2
+
 import OpenSSL
 import dnslib
-try:
-    import pygeoip
-except ImportError:
-    pygeoip = None
+import pygeoip
 
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
@@ -1373,7 +1371,7 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version[:5], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
+        info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version[:5], gevent.__version__, OpenSSL.__version__)
         info += 'Uvent Version      : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
         info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
@@ -1399,8 +1397,6 @@ common = Common()
 
 
 def pre_start():
-    if not OpenSSL:
-        logging.warning('python-openssl not found, please install it!')
     if sys.platform == 'cygwin':
         logging.info('cygwin is not officially supported, please continue at your own risk :)')
         #sys.exit(-1)
@@ -1455,16 +1451,10 @@ def pre_start():
         sys.exit(-1)
     if common.GAE_TRANSPORT:
         GAEProxyHandler.disable_transport_ssl = False
-    if common.GAE_REGIONS and not pygeoip:
-        logging.critical('to enable [gae]regions mode, you should install pygeoip')
-        sys.exit(-1)
     if common.PAC_ENABLE:
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
         spawn_later(600, urllib2.build_opener(urllib2.ProxyHandler({})).open, url)
-    if not dnslib:
-        logging.error('dnslib not found, please put dnslib-0.8.3.egg to %r!', os.path.dirname(os.path.abspath(__file__)))
-        sys.exit(-1)
     if not common.DNS_ENABLE:
         if not common.HTTP_DNS:
             common.HTTP_DNS = common.DNS_SERVERS[:]
