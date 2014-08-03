@@ -1455,17 +1455,20 @@ class MultipleConnectionMixin(object):
     dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
     tcp_connection_time_with_clienthello = collections.defaultdict(float)
-    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
-    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_good_ipaddrs = {}
     ssl_connection_bad_ipaddrs = {}
     ssl_connection_unknown_ipaddrs = {}
+    tcp_connection_cachesock = False
+    tcp_connection_keepalive = False
+    ssl_connection_cachesock = False
+    ssl_connection_keepalive = False
+    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     max_window = 4
     connect_timeout = 4
     max_timeout = 8
     ssl_version = ssl.PROTOCOL_TLSv1
-    ssl_connection_keepalive = False
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
 
     def gethostbyname2(self, hostname):
@@ -1487,7 +1490,7 @@ class MultipleConnectionMixin(object):
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         client_hello = kwargs.get('client_hello', None)
-        cache_key = kwargs.get('cache_key') if not client_hello else None
+        cache_key = kwargs.get('cache_key', '') if self.tcp_connection_cachesock and not client_hello else ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1587,7 +1590,7 @@ class MultipleConnectionMixin(object):
             raise sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key', '')
+        cache_key = kwargs.get('cache_key', '') if self.ssl_connection_cachesock else ''
         validate = kwargs.get('validate')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1882,7 +1885,7 @@ class MultipleConnectionMixin(object):
             response.fp = sock.makefile('rb')
         sock.settimeout(self.connect_timeout)
         response.begin()
-        if self.ssl_connection_keepalive and scheme == 'https' and cache_key:
+        if ((scheme == 'https' and self.ssl_connection_cachesock and self.ssl_connection_keepalive) or (scheme == 'http' and self.tcp_connection_cachesock and self.tcp_connection_keepalive)) and cache_key:
             response.cache_key = cache_key
             response.cache_sock = response.fp._sock
         return response
