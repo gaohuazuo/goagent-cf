@@ -35,7 +35,7 @@ stop() {
 }
 
 restart() {
-    stop
+    stop || true
     sleep 1
     start
 }
@@ -55,9 +55,7 @@ fi
 cd $(python -c "import os; print os.path.dirname(os.path.realpath('$0'))")
 
 case "$1" in
-    # If no arg is given, start the goagent.
-    # If arg `start` is given, also start goagent.
-    '' | start)
+    start)
         start
         ;;
     stop)

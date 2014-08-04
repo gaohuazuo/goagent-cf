@@ -1439,7 +1439,7 @@ def pre_start():
         with open('/proc/cpuinfo', 'rb') as fp:
             m = re.search(r'(?im)(BogoMIPS|cpu MHz)\s+:\s+([\d\.]+)', fp.read())
             if m and float(m.group(2)) < 1000:
-                logging.warning("*NOTE*, Please set [gae]window=2 [gae]keepalive=1")
+                logging.warning("*NOTE*, if you want to fix high cpu usage, please decrease [gae]window")
     if GAEProxyHandler.max_window != common.GAE_WINDOW:
         GAEProxyHandler.max_window = common.GAE_WINDOW
     if common.GAE_KEEPALIVE and common.GAE_MODE == 'https':
@@ -1450,10 +1450,10 @@ def pre_start():
     if common.GAE_SSLVERSION:
         GAEProxyHandler.ssl_version = getattr(ssl, 'PROTOCOL_%s' % common.GAE_SSLVERSION)
         GAEProxyHandler.openssl_context = SSLConnection.context_builder(common.GAE_SSLVERSION)
-    if common.GAE_APPIDS[0] == 'goagent':
+    if common.GAE_ENABLE and common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
-    if common.GAE_MODE == 'http' and common.GAE_PASSWORD == '':
+    if common.GAE_ENABLE and common.GAE_MODE == 'http' and common.GAE_PASSWORD == '':
         logging.critical('to enable http mode, you should set %r [gae]password = <your_pass> and [gae]options = rc4', common.CONFIG_FILENAME)
         sys.exit(-1)
     if common.GAE_TRANSPORT:
