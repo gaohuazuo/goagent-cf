@@ -1779,6 +1779,7 @@ class MultipleConnectionMixin(object):
         except Queue.Empty:
             pass
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
+        #logging.info('gethostbyname2(%r) return %d addresses', hostname, len(addresses))
         sock = None
         for i in range(kwargs.get('max_retry', 5)):
             reorg_ipaddrs()
