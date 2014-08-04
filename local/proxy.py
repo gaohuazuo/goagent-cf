@@ -204,7 +204,11 @@ from proxylib import XORCipher
 
 
 def is_google_ip(ipaddr):
-    return ipaddr.startswith(('173.194.', '207.126.', '209.85.', '216.239.', '64.18.', '64.233.', '66.102.', '66.249.', '72.14.', '74.125.'))
+    if ipaddr in ('74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138'):
+        return False
+    if ipaddr.startswith(('173.194.', '207.126.', '209.85.', '216.239.', '64.18.', '64.233.', '66.102.', '66.249.', '72.14.', '74.125.')):
+        return True
+    return False
 
 
 class RangeFetch(object):
@@ -657,9 +661,8 @@ class HostsFilter(BaseProxyHandlerFilter):
         hostport = handler.path if handler.command == 'CONNECT' else '%s:%d' % (host, port)
         if host in self.host_map or host.endswith(self.host_postfix_endswith) or hostport in self.hostport_map or hostport.endswith(self.hostport_postfix_endswith):
             return 'direct', {}
-        if handler.command != 'CONNECT' and self.urlre_map:
-            if any(x(handler.path) for x in self.urlre_map):
-                return 'direct', {}
+        if handler.command != 'CONNECT' and self.urlre_map and any(x(handler.path) for x in self.urlre_map):
+            return 'direct', {}
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
@@ -1232,11 +1235,9 @@ class Common(object):
         self.LOCALFILE_MAP = localfile_map
         self.HOSTPORT_MAP = hostport_map
         self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
-        self.HOSTPORT_POSTFIX_ENDSWITH = tuple(self.HOSTPORT_POSTFIX_MAP)
         self.URLRE_MAP = urlre_map
         self.HOST_MAP = host_map
         self.HOST_POSTFIX_MAP = host_postfix_map
-        self.HOST_POSTFIX_ENDSWITH = tuple(self.HOST_POSTFIX_MAP)
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
