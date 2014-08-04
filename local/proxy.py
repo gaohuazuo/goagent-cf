@@ -634,31 +634,23 @@ class HostsFilter(BaseProxyHandlerFilter):
 
     def gethostbyname2(self, handler, hostname):
         hostport = '%s:%d' % (hostname, handler.port)
+        hosts = ''
         if hostname in self.host_map:
             hosts = self.host_map[hostname]
-            if hosts != 'direct':
-                return self.iplist_map.get(hosts) or hosts.split('|')
         elif hostname.endswith(self.host_postfix_endswith):
             hosts = next(self.host_postfix_map[x] for x in self.host_postfix_map if hostname.endswith(x))
-            if hosts != 'direct':
-                return self.iplist_map.get(hosts) or hosts.split('|')
         if hostport in self.hostport_map:
             hosts = self.host_map[hostname]
-            if hosts != 'direct':
-                return self.iplist_map.get(hosts) or hosts.split('|')
         elif hostport.endswith(self.hostport_postfix_endswith):
             hostname = next(self.hostport_postfix_map[x] for x in self.hostport_postfix_map if hostport.endswith(x)) or hostname
-            if hosts != 'direct':
-                return self.iplist_map.get(hosts) or hosts.split('|')
         if handler.command != 'CONNECT' and self.urlre_map:
             try:
                 hostname = next(self.urlre_map[x] for x in self.urlre_map if x(handler.path)) or hostname
-                if hosts != 'direct':
-                    return self.iplist_map.get(hosts) or hosts.split('|')
             except StopIteration:
                 pass
+        if hosts not in ('', 'direct'):
+            return self.iplist_map.get(hosts) or hosts.split('|')
         return None
-
 
     def filter(self, handler):
         host, port = handler.host, handler.port
