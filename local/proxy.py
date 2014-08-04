@@ -622,19 +622,48 @@ class LocalfileFilter(BaseProxyHandlerFilter):
 
 class HostsFilter(BaseProxyHandlerFilter):
     """hosts filter"""
-    def __init__(self, host_map, host_postfix_map, hostport_map, hostport_postfix_map, urlre_map):
+    def __init__(self, iplist_map, host_map, host_postfix_map, hostport_map, hostport_postfix_map, urlre_map):
+        self.iplist_map = iplist_map
         self.host_map = host_map
+        self.host_postfix_map = host_postfix_map
         self.host_postfix_endswith = tuple(host_postfix_map)
         self.hostport_map = hostport_map
+        self.hostport_postfix_map = hostport_postfix_map
         self.hostport_postfix_endswith = tuple(hostport_postfix_map)
         self.urlre_map = urlre_map
+
+    def gethostbyname2(self, handler, hostname):
+        hostport = '%s:%d' % (hostname, handler.port)
+        if hostname in self.host_map:
+            hosts = self.host_map[hostname]
+            if hosts != 'direct':
+                return self.iplist_map.get(hosts) or hosts.split('|')
+        elif hostname.endswith(self.host_postfix_endswith):
+            hosts = next(self.host_postfix_map[x] for x in self.host_postfix_map if hostname.endswith(x))
+            if hosts != 'direct':
+                return self.iplist_map.get(hosts) or hosts.split('|')
+        if hostport in self.hostport_map:
+            hosts = self.host_map[hostname]
+            if hosts != 'direct':
+                return self.iplist_map.get(hosts) or hosts.split('|')
+        elif hostport.endswith(self.hostport_postfix_endswith):
+            hostname = next(self.hostport_postfix_map[x] for x in self.hostport_postfix_map if hostport.endswith(x)) or hostname
+            if hosts != 'direct':
+                return self.iplist_map.get(hosts) or hosts.split('|')
+        if handler.command != 'CONNECT' and self.urlre_map:
+            try:
+                hostname = next(self.urlre_map[x] for x in self.urlre_map if x(handler.path)) or hostname
+                if hosts != 'direct':
+                    return self.iplist_map.get(hosts) or hosts.split('|')
+            except StopIteration:
+                pass
+        return None
+
 
     def filter(self, handler):
         host, port = handler.host, handler.port
         hostport = handler.path if handler.command == 'CONNECT' else '%s:%d' % (host, port)
-        if host in self.host_map or host.endswith(self.host_postfix_endswith):
-            return 'direct', {}
-        if hostport in self.hostport_map or hostport.endswith(self.hostport_postfix_endswith):
+        if host in self.host_map or host.endswith(self.host_postfix_endswith) or hostport in self.hostport_map or hostport.endswith(self.hostport_postfix_endswith):
             return 'direct', {}
         if handler.command != 'CONNECT' and self.urlre_map:
             if any(x(handler.path) for x in self.urlre_map):
@@ -664,6 +693,7 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
                        'strip': StripPlugin(),}
+    hosts_filter = None
 
     def __init__(self, *args, **kwargs):
         SimpleProxyHandler.__init__(self, *args, **kwargs)
@@ -675,35 +705,14 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
             common.resolve_iplist()
         random.shuffle(common.GAE_APPIDS)
         self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS)
+        try:
+            self.__class__.hosts_filter = next(x for x in self.__class__.handler_filters if isinstance(x, HostsFilter))
+        except StopIteration:
+            pass
 
     def gethostbyname2(self, hostname):
-        hostport = '%s:%d' % (hostname, self.port)
-        if hostname in common.HOST_MAP:
-            hosts = common.HOST_MAP[hostname]
-            if hosts != 'direct':
-                return common.IPLIST_MAP.get(hosts) or hosts.split('|')
-        elif hostname.endswith(common.HOST_POSTFIX_ENDSWITH):
-            hosts = next(common.HOST_POSTFIX_MAP[x] for x in common.HOST_POSTFIX_MAP if hostname.endswith(x))
-            if hosts != 'direct':
-                return common.IPLIST_MAP.get(hosts) or hosts.split('|')
-        if hostport in common.HOSTPORT_MAP:
-            hosts = common.HOST_MAP[hostname]
-            if hosts != 'direct':
-                return common.IPLIST_MAP.get(hosts) or hosts.split('|')
-        elif hostport.endswith(common.HOSTPORT_POSTFIX_ENDSWITH):
-            hostname = next(common.HOSTPORT_POSTFIX_MAP[x] for x in common.HOSTPORT_POSTFIX_MAP if hostport.endswith(x)) or hostname
-            if hosts != 'direct':
-                return common.IPLIST_MAP.get(hosts) or hosts.split('|')
-        if self.command != 'CONNECT' and common.URLRE_MAP:
-            try:
-                hostname = next(common.URLRE_MAP[x] for x in common.URLRE_MAP if x(self.path)) or hostname
-                if hosts != 'direct':
-                    return common.IPLIST_MAP.get(hosts) or hosts.split('|')
-            except StopIteration:
-                pass
-        elif re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
-            return [hostname]
-        return MultipleConnectionMixin.gethostbyname2(self, hostname)
+        iplist = self.hosts_filter.gethostbyname2(self, hostname) if self.hosts_filter else None
+        return iplist or MultipleConnectionMixin.gethostbyname2(self, hostname)
 
 
 class ProxyGAEProxyHandler(ProxyConnectionMixin, GAEProxyHandler):
@@ -1479,7 +1488,7 @@ def pre_start():
     if common.GAE_REGIONS:
         GAEProxyHandler.handler_filters.insert(0, DirectRegionFilter(common.GAE_REGIONS))
     if common.HOST_MAP or common.HOST_POSTFIX_MAP or common.HOSTPORT_MAP or common.HOSTPORT_POSTFIX_MAP or common.URLRE_MAP:
-        GAEProxyHandler.handler_filters.insert(0, HostsFilter(common.HOST_MAP, common.HOST_POSTFIX_MAP, common.HOSTPORT_MAP, common.HOSTPORT_POSTFIX_MAP, common.URLRE_MAP))
+        GAEProxyHandler.handler_filters.insert(0, HostsFilter(common.IPLIST_MAP, common.HOST_MAP, common.HOST_POSTFIX_MAP, common.HOSTPORT_MAP, common.HOSTPORT_POSTFIX_MAP, common.URLRE_MAP))
     if True:
         GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
     if common.CRLF_SITES:
