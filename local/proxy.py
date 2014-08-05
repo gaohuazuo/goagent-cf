@@ -1167,7 +1167,7 @@ class Common(object):
             if site == 'dns':
                 dns_servers = rules
                 continue
-            if rule.startswith('file://') or '$1' in rule:
+            if rule.startswith(('file://', 'http://', 'https://')) or '$1' in rule:
                 urlrewrite_map[site] = rule
                 continue
             for name, sites in [('withgae', withgae_sites),
