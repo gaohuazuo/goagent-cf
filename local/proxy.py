@@ -1211,7 +1211,7 @@ class Common(object):
         self.HOST_MAP = host_map
         self.HOST_POSTFIX_MAP = host_postfix_map
 
-        self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
+        self.IPLIST_MAP = collections.OrderedDict((k, v.split('|') if v else []) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
@@ -1331,7 +1331,7 @@ class Common(object):
                     resolved_iplist += iplist
                 except Queue.Empty:
                     break
-            if name == 'google_hk':
+            if name == 'google_hk' and need_resolve_remote:
                 for delay in (1, 60, 150, 240, 300, 450, 600, 900):
                     spawn_later(delay, self.extend_iplist, name, need_resolve_remote)
             if name.startswith('google_') and name not in ('google_cn', 'google_hk') and resolved_iplist:
