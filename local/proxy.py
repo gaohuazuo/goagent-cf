@@ -592,38 +592,6 @@ class PHPFetchPlugin(BaseFetchPlugin):
             del data
 
 
-class LocalfileFilter(BaseProxyHandlerFilter):
-    """local file filter"""
-    def __init__(self, localfile_map):
-        self.localfile_map = set(localfile_map)
-
-    def filter(self, handler):
-        filename = ''
-        for match in self.localfile_map:
-            if match(handler.path):
-                filename = self.localfile_map[match].lstrip('file://')
-                if os.name == 'nt':
-                    filename = filename.lstrip('/')
-                break
-        if not filename:
-            return
-        content_type = None
-        try:
-            import mimetypes
-            content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
-        except StandardError as e:
-            logging.error('import mimetypes failed: %r', e)
-        try:
-            with open(filename, 'rb') as fp:
-                data = fp.read()
-                headers = {'Connection': 'close', 'Content-Length': str(len(data))}
-                if content_type:
-                    headers['Content-Type'] = content_type
-                return 'mock', {'status': 200, 'headers': headers, 'body': data}
-        except StandardError as e:
-            return 'mock', {'status': 403, 'headers': {'Connection': 'close'}, 'body': 'read %r %r' % (filename, e)}
-
-
 class HostsFilter(BaseProxyHandlerFilter):
     """hosts filter"""
     def __init__(self, iplist_map, host_map, host_postfix_map, hostport_map, hostport_postfix_map, urlre_map):
@@ -1133,7 +1101,7 @@ class Common(object):
 
     def __init__(self):
         """load config from proxy.ini"""
-        ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+        ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>\S+)\s+(?P<vi>[=])\s+(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
         self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
         self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
@@ -1179,7 +1147,7 @@ class Common(object):
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
             self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
 
-        localfile_map = collections.OrderedDict()
+        urlrewrite_map = collections.OrderedDict()
         host_map = collections.OrderedDict()
         host_postfix_map = collections.OrderedDict()
         hostport_map = collections.OrderedDict()
@@ -1199,8 +1167,9 @@ class Common(object):
             if site == 'dns':
                 dns_servers = rules
                 continue
-            if rule.startswith('file://'):
-                localfile_map[re.compile(site).search] = rule
+            if rule.startswith('file://') or r'\1' in rule:
+                urlrewrite_map[re.compile('^' + site.strip('^$') + '$').match] = rule
+                continue
             for name, sites in [('withgae', withgae_sites),
                                 ('crlf', crlf_sites),
                                 ('nocrlf', nocrlf_sites),
@@ -1235,7 +1204,7 @@ class Common(object):
         self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
         self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
         self.NOFAKEHTTPS_SITES = set(nofakehttps_sites)
-        self.LOCALFILE_MAP = localfile_map
+        self.URLREWRITE_MAP = urlrewrite_map
         self.HOSTPORT_MAP = hostport_map
         self.HOSTPORT_POSTFIX_MAP = hostport_postfix_map
         self.URLRE_MAP = urlre_map
@@ -1485,10 +1454,10 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, DirectRegionFilter(common.GAE_REGIONS))
     if common.HOST_MAP or common.HOST_POSTFIX_MAP or common.HOSTPORT_MAP or common.HOSTPORT_POSTFIX_MAP or common.URLRE_MAP:
         GAEProxyHandler.handler_filters.insert(0, HostsFilter(common.IPLIST_MAP, common.HOST_MAP, common.HOST_POSTFIX_MAP, common.HOSTPORT_MAP, common.HOSTPORT_POSTFIX_MAP, common.URLRE_MAP))
-    if True:
-        GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
     if common.CRLF_SITES:
         GAEProxyHandler.handler_filters.insert(0, CRLFSitesFilter(common.CRLF_SITES, common.NOCRLF_SITES))
+    if common.URLREWRITE_MAP:
+        GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter(common.URLREWRITE_MAP))
     if common.FAKEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
     if common.FORCEHTTPS_SITES:
@@ -1497,8 +1466,6 @@ def pre_start():
         GAEProxyHandler.handler_filters.insert(0, JumpLastFilter(common.WITHGAE_SITES))
     if common.USERAGENT_ENABLE:
         GAEProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
-    if common.LOCALFILE_MAP:
-        GAEProxyHandler.handler_filters.insert(0, LocalfileFilter(common.LOCALFILE_MAP))
     if common.LISTEN_USERNAME:
         GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
 
