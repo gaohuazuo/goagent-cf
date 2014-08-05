@@ -1219,27 +1219,38 @@ class CRLFSitesFilter(BaseProxyHandlerFilter):
 class URLRewriteFilter(BaseProxyHandlerFilter):
     """url rewrite filter"""
     def __init__(self, urlrewrite_map):
-        self.urlrewrite_map = urlrewrite_map
+        self.urlrewrite_map = {}
+        for regex, repl in urlrewrite_map.items():
+            mo = re.search(r'://([^/:]+)', regex)
+            if not mo:
+                logging.warning('URLRewriteFilter does not support regex: %r', regex)
+                continue
+            addr = mo.group(1).replace(r'\.', '.')
+            mo = re.match(r'[\w\-\_\d\[\]\:]+', addr)
+            if not mo:
+                logging.warning('URLRewriteFilter does not support wildcard host: %r', addr)
+            self.urlrewrite_map.setdefault(addr, []).append((re.compile(regex).search, repl))
 
     def filter(self, handler):
-        for match, subl in self.urlrewrite_map.items():
+        if handler.host not in self.urlrewrite_map:
+            return
+        for match, repl in self.urlrewrite_map[handler.host]:
             mo = match(handler.path)
             if mo:
                 logging.debug('URLRewriteFilter metched %r', handler.path)
-                if subl.startswith('file://'):
-                    return self.filter_localfile(handler, mo, subl)
+                if repl.startswith('file://'):
+                    return self.filter_localfile(handler, mo, repl)
                 else:
-                    return self.filter_redirect(handler, mo, subl)
+                    return self.filter_redirect(handler, mo, repl)
 
-    def filter_redirect(self, handler, mo, subl):
+    def filter_redirect(self, handler, mo, repl):
         for i, g in enumerate(mo.groups()):
-            subl = subl.replace('\\%d' % (i+1), urllib.unquote_plus(g))
-        headers = {'Location': subl, 'Connection': 'close'}
+            repl = repl.replace('$%d' % (i+1), urllib.unquote_plus(g))
+        headers = {'Location': repl, 'Connection': 'close'}
         return 'mock', {'status': 301, 'headers': headers, 'body': ''}
 
-
-    def filter_localfile(self, handler, mo, subl):
-        filename = subl.lstrip('file://')
+    def filter_localfile(self, handler, mo, repl):
+        filename = repl.lstrip('file://')
         if os.name == 'nt':
             filename = filename.lstrip('/')
         content_type = None
