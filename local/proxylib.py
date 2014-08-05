@@ -1218,18 +1218,45 @@ class CRLFSitesFilter(BaseProxyHandlerFilter):
 
 class URLRewriteFilter(BaseProxyHandlerFilter):
     """url rewrite filter"""
-    rules = {
-                'www.google.com': (r'^https?://www\.google\.com/(?:imgres|url)\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
-                'www.google.com.hk': (r'^https?://www\.google\.com\.hk/url\?.*url=([^&]+)', lambda m: urllib.unquote_plus(m.group(1))),
-            }
+    def __init__(self, urlrewrite_map):
+        self.urlrewrite_map = urlrewrite_map
+
     def filter(self, handler):
-        if handler.host in self.rules:
-            pattern, callback = self.rules[handler.host]
-            m = re.search(pattern, handler.path)
-            if m:
+        for match, subl in self.urlrewrite_map.items():
+            mo = match(handler.path)
+            if mo:
                 logging.debug('URLRewriteFilter metched %r', handler.path)
-                headers = {'Location': callback(m), 'Connection': 'close'}
-                return 'mock', {'status': 301, 'headers': headers, 'body': ''}
+                if subl.startswith('file://'):
+                    return self.filter_localfile(handler, mo, subl)
+                else:
+                    return self.filter_redirect(handler, mo, subl)
+
+    def filter_redirect(self, handler, mo, subl):
+        for i, g in enumerate(mo.groups()):
+            subl = subl.replace('\\%d' % (i+1), urllib.unquote_plus(g))
+        headers = {'Location': subl, 'Connection': 'close'}
+        return 'mock', {'status': 301, 'headers': headers, 'body': ''}
+
+
+    def filter_localfile(self, handler, mo, subl):
+        filename = subl.lstrip('file://')
+        if os.name == 'nt':
+            filename = filename.lstrip('/')
+        content_type = None
+        try:
+            import mimetypes
+            content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
+        except StandardError as e:
+            logging.error('import mimetypes failed: %r', e)
+        try:
+            with open(filename, 'rb') as fp:
+                data = fp.read()
+                headers = {'Connection': 'close', 'Content-Length': str(len(data))}
+                if content_type:
+                    headers['Content-Type'] = content_type
+                return 'mock', {'status': 200, 'headers': headers, 'body': data}
+        except StandardError as e:
+            return 'mock', {'status': 403, 'headers': {'Connection': 'close'}, 'body': 'read %r %r' % (filename, e)}
 
 
 class AutoRangeFilter(BaseProxyHandlerFilter):
