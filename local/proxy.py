@@ -1187,6 +1187,7 @@ class Common(object):
         urlre_map = collections.OrderedDict()
         withgae_sites = []
         crlf_sites = []
+        nocrlf_sites = []
         forcehttps_sites = []
         noforcehttps_sites = []
         fakehttps_sites = []
@@ -1202,6 +1203,7 @@ class Common(object):
                 localfile_map[re.compile(site).search] = rule
             for name, sites in [('withgae', withgae_sites),
                                 ('crlf', crlf_sites),
+                                ('nocrlf', nocrlf_sites),
                                 ('forcehttps', forcehttps_sites),
                                 ('noforcehttps', noforcehttps_sites),
                                 ('fakehttps', fakehttps_sites),
@@ -1228,6 +1230,7 @@ class Common(object):
         self.HTTP_DNS = dns_servers
         self.WITHGAE_SITES = set(withgae_sites)
         self.CRLF_SITES = tuple(crlf_sites)
+        self.NOCRLF_SITES = set(nocrlf_sites)
         self.FORCEHTTPS_SITES = tuple(forcehttps_sites)
         self.NOFORCEHTTPS_SITES = set(noforcehttps_sites)
         self.FAKEHTTPS_SITES = tuple(fakehttps_sites)
@@ -1485,7 +1488,7 @@ def pre_start():
     if True:
         GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter())
     if common.CRLF_SITES:
-        GAEProxyHandler.handler_filters.insert(0, CRLFSitesFilter(common.CRLF_SITES))
+        GAEProxyHandler.handler_filters.insert(0, CRLFSitesFilter(common.CRLF_SITES, common.NOCRLF_SITES))
     if common.FAKEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
     if common.FORCEHTTPS_SITES:
