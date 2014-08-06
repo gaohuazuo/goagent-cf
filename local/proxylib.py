@@ -1251,6 +1251,8 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
 
     def filter_localfile(self, handler, mo, repl):
         filename = repl.lstrip('file://')
+        if filename.lower() in ('/dev/null', 'nul'):
+            filename = os.devnull
         if os.name == 'nt':
             filename = filename.lstrip('/')
         content_type = None
