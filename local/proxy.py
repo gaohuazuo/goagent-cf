@@ -1284,7 +1284,7 @@ class Common(object):
                     iplist = dnslib_record2iplist(dnslib_resolve(host, [dnsserver], timeout=4, blacklist=self.DNS_BLACKLIST))
                     queue.put((host, dnsserver, iplist))
                 except (socket.error, OSError) as e:
-                    logging.warning('%r remote host=%r failed: %s', dnslib_resolve, host, e)
+                    logging.info('%s remote host=%r failed: %s', str(dnslib_resolve).split()[1], host, e)
                     time.sleep(1)
         result_queue = Queue.Queue()
         for host in hosts:
