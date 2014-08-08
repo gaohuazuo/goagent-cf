@@ -562,6 +562,10 @@ class PHPFetchPlugin(BaseFetchPlugin):
                     headers['Content-Encoding'] = 'deflate'
             headers['Content-Length'] = str(len(body))
         skip_headers = handler.skip_headers
+        if self.password:
+            kwargs['password'] = self.password
+        if self.validate:
+            kwargs['validate'] = self.validate
         metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
         metadata = deflate(metadata)
         app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
@@ -577,18 +581,12 @@ class PHPFetchPlugin(BaseFetchPlugin):
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(self.password[0]))
         logging.info('%s "PHP %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
-        need_chunked = response.getheader('Transfer-Encoding')
+        handler.close_connection = 1
         while True:
             data = response.read(8192)
             if not data:
-                if need_chunked:
-                    handler.wfile.write('0\r\n\r\n')
                 break
-            if need_chunked:
-                handler.wfile.write('%x\r\n' % len(data))
             handler.wfile.write(data)
-            if need_chunked:
-                handler.wfile.write('\r\n')
             del data
 
 
@@ -1423,8 +1421,7 @@ def pre_start():
         GAEProxyHandler.ssl_version = getattr(ssl, 'PROTOCOL_%s' % common.GAE_SSLVERSION)
         GAEProxyHandler.openssl_context = SSLConnection.context_builder(common.GAE_SSLVERSION)
     if common.GAE_ENABLE and common.GAE_APPIDS[0] == 'goagent':
-        logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
-        sys.exit(-1)
+        logging.warning('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
     if common.GAE_ENABLE and common.GAE_MODE == 'http' and common.GAE_PASSWORD == '':
         logging.critical('to enable http mode, you should set %r [gae]password = <your_pass> and [gae]options = rc4', common.CONFIG_FILENAME)
         sys.exit(-1)
