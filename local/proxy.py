@@ -581,7 +581,7 @@ class PHPFetchPlugin(BaseFetchPlugin):
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(self.password[0]))
         logging.info('%s "PHP %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
-        handler.close_connection = 1
+        handler.close_connection = bool(response.getheader('Transfer-Encoding'))
         while True:
             data = response.read(8192)
             if not data:
