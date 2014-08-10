@@ -1802,7 +1802,7 @@ class MultipleConnectionMixin(object):
         def reorg_ipaddrs():
             current_time = time.time()
             for ipaddr, ctime in self.ssl_connection_good_ipaddrs.items():
-                if current_time - ctime > 4 * 60:
+                if current_time - ctime > 4 * 60 and len(self.ssl_connection_good_ipaddr) > 2 * self.max_window:
                     self.ssl_connection_good_ipaddrs.pop(ipaddr, None)
                     self.ssl_connection_unknown_ipaddrs[ipaddr] = ctime
             for ipaddr, ctime in self.ssl_connection_bad_ipaddrs.items():
