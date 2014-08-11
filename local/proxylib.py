@@ -1522,8 +1522,8 @@ class MultipleConnectionMixin(object):
     max_window = 4
     connect_timeout = 4
     max_timeout = 8
-    ssl_version = ssl.PROTOCOL_TLSv1
-    openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+    ssl_version = ssl.PROTOCOL_SSLv23
+    openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
 
     def gethostbyname2(self, hostname):
         try:
