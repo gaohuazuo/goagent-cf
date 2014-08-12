@@ -383,12 +383,13 @@ class GAEFetchPlugin(BaseFetchPlugin):
     connect_timeout = 4
     max_retry = 2
 
-    def __init__(self, appids, password, path, mode, keepalive, obfuscate, pagespeed, validate, options):
+    def __init__(self, appids, password, path, mode, cachesock, keepalive, obfuscate, pagespeed, validate, options):
         BaseFetchPlugin.__init__(self)
         self.appids = appids
         self.password = password
         self.path = path
         self.mode = mode
+        self.cachesock = cachesock
         self.keepalive = keepalive
         self.obfuscate = obfuscate
         self.pagespeed = pagespeed
@@ -512,7 +513,6 @@ class GAEFetchPlugin(BaseFetchPlugin):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        cache_key = ''
         response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
@@ -665,7 +665,7 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
         random.shuffle(common.GAE_APPIDS)
-        self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS)
+        self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_CACHESOCK, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS)
         try:
             self.__class__.hosts_filter = next(x for x in self.__class__.handler_filters if isinstance(x, HostsFilter))
         except StopIteration:
@@ -1124,7 +1124,8 @@ class Common(object):
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
         self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
-        self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive') if self.CONFIG.has_option('gae', 'keepalive') else 0
+        self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive')
+        self.GAE_CACHESOCK = self.CONFIG.getint('gae', 'cachesock')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_TRANSPORT = self.CONFIG.getint('gae', 'transport') if self.CONFIG.has_option('gae', 'transport') else 0
@@ -1414,7 +1415,12 @@ def pre_start():
         logging.warning("*NOTE*, please upgrade to gevent 1.1 as possible")
     if GAEProxyHandler.max_window != common.GAE_WINDOW:
         GAEProxyHandler.max_window = common.GAE_WINDOW
-    if common.GAE_KEEPALIVE and common.GAE_MODE == 'https':
+    if common.GAE_CACHESOCK:
+        GAEProxyHandler.tcp_connection_cachesock = True
+        GAEProxyHandler.ssl_connection_cachesock = True
+    if common.GAE_KEEPALIVE:
+        GAEProxyHandler.tcp_connection_cachesock = True
+        GAEProxyHandler.tcp_connection_keepalive = True
         GAEProxyHandler.ssl_connection_cachesock = True
         GAEProxyHandler.ssl_connection_keepalive = True
     if common.GAE_PAGESPEED and not common.GAE_OBFUSCATE:
