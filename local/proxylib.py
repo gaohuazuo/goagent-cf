@@ -1807,7 +1807,7 @@ class MultipleConnectionMixin(object):
         try:
             while cache_key:
                 ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
-                if time.time() - ctime < 30:
+                if time.time() - ctime < 16:
                     return sock
                 else:
                     sock.close()
