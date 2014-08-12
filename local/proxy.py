@@ -60,7 +60,7 @@ import gevent.socket
 import gevent.server
 import gevent.queue
 import gevent.monkey
-gevent.monkey.patch_all(subprocess=True)
+gevent.monkey.patch_all()
 
 import errno
 import time
@@ -1410,6 +1410,8 @@ def pre_start():
             m = re.search(r'(?im)(BogoMIPS|cpu MHz)\s+:\s+([\d\.]+)', fp.read())
             if m and float(m.group(2)) < 1000:
                 logging.warning("*NOTE*, if you want to fix high cpu usage, please decrease [gae]window")
+    if gevent.__version__ < '1.0':
+        logging.warning("*NOTE*, please upgrade to gevent 1.1 as possible")
     if GAEProxyHandler.max_window != common.GAE_WINDOW:
         GAEProxyHandler.max_window = common.GAE_WINDOW
     if common.GAE_KEEPALIVE and common.GAE_MODE == 'https':
