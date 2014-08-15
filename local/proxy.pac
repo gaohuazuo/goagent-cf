@@ -19,9 +19,6 @@ function FindProxyForURL(url, host) {
     } else if (shExpMatch(host, '*.google*.*') ||
                dnsDomainIs(host, '.ggpht.com') ||
                dnsDomainIs(host, '.wikipedia.org') ||
-               dnsDomainIs(host, '.sourceforge.net') ||
-               dnsDomainIs(host, '.sf.net') ||
-               host == 'sourceforge.net' ||
                host == 'cdnjs.cloudflare.com' ||
                host == 'wp.me' ||
                host == 'po.st' ||
