@@ -714,6 +714,9 @@ class PHPProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
                        'mock': MockFetchPlugin(),
                        'strip': StripPlugin(),}
 
+    def __init__(self, *args, **kwargs):
+        SimpleProxyHandler.__init__(self, *args, **kwargs)
+
 
 class ProxyPHPProxyHandler(ProxyConnectionMixin, PHPProxyHandler):
 

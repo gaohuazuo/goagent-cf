@@ -1502,6 +1502,7 @@ class MultipleConnectionMixin(object):
     dns_servers = ['8.8.8.8', '114.114.114.114']
     dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
+    tcp_connection_time_with_clienthello = collections.defaultdict(float)
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     tcp_connection_good_ipaddrs = {}
     tcp_connection_bad_ipaddrs = {}
@@ -1539,7 +1540,8 @@ class MultipleConnectionMixin(object):
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key', '') if self.tcp_connection_cachesock else ''
+        client_hello = kwargs.get('client_hello', None)
+        cache_key = kwargs.get('cache_key', '') if self.tcp_connection_cachesock and not client_hello else ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             sock = None
@@ -1566,6 +1568,17 @@ class MultipleConnectionMixin(object):
                 self.tcp_connection_time[ipaddr] = sock.tcp_time = connected_time - start_time
                 if gevent and isinstance(sock, gevent.socket.socket):
                     sock.tcp_time = connected_time - start_time
+                if client_hello:
+                    sock.sendall(client_hello)
+                    if gevent and isinstance(sock, gevent.socket.socket):
+                        sock.data = data = sock.recv(4096)
+                    else:
+                        data = sock.recv(4096, socket.MSG_PEEK)
+                    if not data:
+                        logging.debug('create_tcp_connection %r with client_hello return NULL byte, continue %r', ipaddr, time.time()-start_time)
+                        raise socket.timeout('timed out')
+                    # record TCP connection time with client hello
+                    self.tcp_connection_time_with_clienthello[ipaddr] = time.time() - start_time
                 # remove from bad/unknown ipaddrs dict
                 self.tcp_connection_bad_ipaddrs.pop(ipaddr, None)
                 self.tcp_connection_unknown_ipaddrs.pop(ipaddr, None)
