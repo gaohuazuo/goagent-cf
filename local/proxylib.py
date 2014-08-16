@@ -1803,7 +1803,7 @@ class MultipleConnectionMixin(object):
                 if current_time - ctime > 6 * 60:
                     self.ssl_connection_bad_ipaddrs.pop(ipaddr, None)
                     self.ssl_connection_unknown_ipaddrs[ipaddr] = ctime
-            logging.info("good_ipaddrs=%d, bad_ipaddrs=%d, unkown_ipaddrs=%d", len(self.ssl_connection_good_ipaddrs), len(self.ssl_connection_bad_ipaddrs), len(self.ssl_connection_unknown_ipaddrs))
+            logging.info("good_ipaddrs=%d, bad_ipaddrs=%d, unknown_ipaddrs=%d", len(self.ssl_connection_good_ipaddrs), len(self.ssl_connection_bad_ipaddrs), len(self.ssl_connection_unknown_ipaddrs))
         try:
             while cache_key:
                 ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
@@ -1821,16 +1821,16 @@ class MultipleConnectionMixin(object):
             window = self.max_window + i
             good_ipaddrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
             good_ipaddrs = sorted(good_ipaddrs, key=self.ssl_connection_time.get)[:window]
-            unkown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
-            random.shuffle(unkown_ipaddrs)
-            unkown_ipaddrs = unkown_ipaddrs[:window]
+            unknown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
+            random.shuffle(unknown_ipaddrs)
+            unknown_ipaddrs = unknown_ipaddrs[:window]
             bad_ipaddrs = [x for x in addresses if x in self.ssl_connection_bad_ipaddrs]
             bad_ipaddrs = sorted(bad_ipaddrs, key=self.ssl_connection_bad_ipaddrs.get)[:window]
-            addrs = good_ipaddrs + unkown_ipaddrs + bad_ipaddrs
+            addrs = good_ipaddrs + unknown_ipaddrs + bad_ipaddrs
             remain_window = 3 * window - len(addrs)
             if 0 < remain_window <= len(addresses):
                 addrs += random.sample(addresses, remain_window)
-            logging.debug('%s good_ipaddrs=%d, unkown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unkown_ipaddrs), len(bad_ipaddrs))
+            logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
