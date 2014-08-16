@@ -443,7 +443,7 @@ class ProxyUtil(object):
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.connect(('8.8.8.8', 53))
             listen_ip = sock.getsockname()[0]
-        except socket.error:
+        except StandardError:
             pass
         finally:
             if sock:
