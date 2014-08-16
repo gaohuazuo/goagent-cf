@@ -610,7 +610,7 @@ class HostsFilter(BaseProxyHandlerFilter):
         elif hostname.endswith(self.host_postfix_endswith):
             hosts = next(self.host_postfix_map[x] for x in self.host_postfix_map if hostname.endswith(x))
         if hostport in self.hostport_map:
-            hosts = self.host_map[hostname]
+            hosts = self.hostport_map[hostname]
         elif hostport.endswith(self.hostport_postfix_endswith):
             hosts = next(self.hostport_postfix_map[x] for x in self.hostport_postfix_map if hostport.endswith(x))
         if handler.command != 'CONNECT' and self.urlre_map:
