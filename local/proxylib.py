@@ -1518,6 +1518,7 @@ class MultipleConnectionMixin(object):
     ssl_connection_unknown_ipaddrs = {}
     ssl_connection_cachesock = False
     ssl_connection_keepalive = False
+    iplist_predefined = set([])
     max_window = 4
     connect_timeout = 4
     max_timeout = 8
@@ -1622,7 +1623,7 @@ class MultipleConnectionMixin(object):
         def reorg_ipaddrs():
             current_time = time.time()
             for ipaddr, ctime in self.tcp_connection_good_ipaddrs.items():
-                if current_time - ctime > 4 * 60 and len(self.tcp_connection_good_ipaddrs) > 2 * self.max_window:
+                if current_time - ctime > 4 * 60 and len(self.tcp_connection_good_ipaddrs) > 2 * self.max_window and ipaddr[0] not in self.iplist_predefined:
                     self.tcp_connection_good_ipaddrs.pop(ipaddr, None)
                     self.tcp_connection_unknown_ipaddrs[ipaddr] = ctime
             for ipaddr, ctime in self.tcp_connection_bad_ipaddrs.items():
@@ -1830,7 +1831,7 @@ class MultipleConnectionMixin(object):
         def reorg_ipaddrs():
             current_time = time.time()
             for ipaddr, ctime in self.ssl_connection_good_ipaddrs.items():
-                if current_time - ctime > 4 * 60 and len(self.ssl_connection_good_ipaddrs) > 2 * self.max_window:
+                if current_time - ctime > 4 * 60 and len(self.ssl_connection_good_ipaddrs) > 2 * self.max_window and ipaddr[0] not in self.iplist_predefined:
                     self.ssl_connection_good_ipaddrs.pop(ipaddr, None)
                     self.ssl_connection_unknown_ipaddrs[ipaddr] = ctime
             for ipaddr, ctime in self.ssl_connection_bad_ipaddrs.items():
