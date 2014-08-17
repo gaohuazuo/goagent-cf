@@ -1216,6 +1216,7 @@ class Common(object):
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|') if v else []) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
+        self.IPLIST_PREDEFINED = [x for x in sum(self.IPLIST_MAP.values(), []) if re.match(r'^\d+\.\d+\.\d+\.\d+$', x) or ':' in x]
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1427,6 +1428,8 @@ def pre_start():
         GAEProxyHandler.tcp_connection_keepalive = True
         GAEProxyHandler.ssl_connection_cachesock = True
         GAEProxyHandler.ssl_connection_keepalive = True
+    if common.IPLIST_PREDEFINED:
+        GAEProxyHandler.iplist_predefined = set(common.IPLIST_PREDEFINED)
     if common.GAE_PAGESPEED and not common.GAE_OBFUSCATE:
         logging.critical("*NOTE*, [gae]pagespeed=1 requires [gae]obfuscate=1")
         sys.exit(-1)
