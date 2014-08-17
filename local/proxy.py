@@ -657,19 +657,22 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 class WithGAEFilter(BaseProxyHandlerFilter):
     """force https filter"""
     def __init__(self, withgae_sites, withphp_sites, withvps_sites):
-        self.withgae_sites = tuple(withgae_sites)
-        self.withphp_sites = tuple(withphp_sites)
-        self.withvps_sites = tuple(withvps_sites)
+        self.withgae_sites = set(x for x in withgae_sites if not x.startswith('.'))
+        self.withgae_sites_postfix = tuple(x for x in withgae_sites if x.startswith('.'))
+        self.withphp_sites = set(x for x in withphp_sites if not x.startswith('.'))
+        self.withphp_sites_postfix = tuple(x for x in withphp_sites if x.startswith('.'))
+        self.withvps_sites = set(x for x in withvps_sites if not x.startswith('.'))
+        self.withvps_sites_postfix = tuple(x for x in withvps_sites if x.startswith('.'))
 
     def filter(self, handler):
         if handler.command == 'CONNECT':
             do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
             return 'strip', {'do_ssl_handshake': do_ssl_handshake}
-        elif handler.host.endswith(self.withgae_sites):
+        elif handler.host in self.withgae_sites or handler.host.endswith(self.withgae_sites_postfix):
             return 'gae', {}
-        elif handler.host.endswith(self.withphp_sites):
+        elif handler.host in self.withphp_sites or handler.host.endswith(self.withphp_sites_postfix):
             return 'php', {}
-        elif handler.host.endswith(self.withvps_sites):
+        elif handler.host in self.withvps_sites or handler.host.endswith(self.withvps_sites_postfix):
             return 'vps', {}
         else:
             pass
