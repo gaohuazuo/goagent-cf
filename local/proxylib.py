@@ -552,8 +552,8 @@ def dnslib_resolve_over_udp(query, dnsservers, timeout, **kwargs):
                             logging.debug('qname=%r reply_server=%r record null iplist=%s', query.q.qname, reply_server, iplist)
                             continue
             except socket.error as e:
-                logging.warning('handle dns query=%s socket: %r', query.q.qname, e)
-        raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query.q.qname, dnsservers))
+                logging.warning('handle dns query=%s socket: %r', query, e)
+        raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
     finally:
         for sock in socks:
             sock.close()
@@ -604,12 +604,12 @@ def dnslib_resolve_over_tcp(query, dnsservers, timeout, **kwargs):
         try:
             result = queobj.get(timeout)
         except Queue.Empty:
-            raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query.q.qname, dnsservers))
+            raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
         if result and not isinstance(result, Exception):
             return result
         elif i == len(dnsservers) - 1:
-            logging.warning('dnslib_resolve_over_tcp %r with %s return %r', query.q.qname, dnsservers, result)
-    raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query.q.qname, dnsservers))
+            logging.warning('dnslib_resolve_over_tcp %r with %s return %r', query, dnsservers, result)
+    raise socket.gaierror(11004, 'getaddrinfo %r from %r failed' % (query, dnsservers))
 
 
 def dnslib_record2iplist(record):
