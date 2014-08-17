@@ -73,7 +73,6 @@ import io
 import traceback
 import random
 import base64
-import uuid
 import urlparse
 import threading
 import thread
@@ -495,10 +494,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
-            try:
-                fetchserver += '/ps/%s.gif' % uuid.uuid1()
-            except ValueError:
-                fetchserver += '/ps/%d.gif' % int(time.time()*1000)
+            fetchserver += '/ps/%d%s.gif' % (int(time.time()*1000), random.random())
             request_headers['X-GOA-PS1'] = base64.b64encode(deflate(metadata)).strip()
             if body:
                 request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
