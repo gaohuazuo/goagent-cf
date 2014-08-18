@@ -1379,6 +1379,9 @@ class Common(object):
                 sys.exit(-1)
             logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
             common.IPLIST_MAP[name] = resolved_iplist
+        if len(self.IPLIST_MAP.get('google_cn', [])) < 4 and self.IPLIST_MAP.get('google_hk', []):
+            logging.warning('google_cn resolved too short iplist=%s, switch to google_hk', self.IPLIST_MAP.get('google_cn', []))
+            self.IPLIST_MAP['google_cn'] = self.IPLIST_MAP['google_hk']
 
     def info(self):
         info = ''
