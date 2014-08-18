@@ -665,17 +665,19 @@ class WithGAEFilter(BaseProxyHandlerFilter):
         self.withvps_sites_postfix = tuple(x for x in withvps_sites if x.startswith('.'))
 
     def filter(self, handler):
-        if handler.command == 'CONNECT':
-            do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
-            return 'strip', {'do_ssl_handshake': do_ssl_handshake}
-        elif handler.host in self.withgae_sites or handler.host.endswith(self.withgae_sites_postfix):
-            return 'gae', {}
+        plugin = ''
+        if handler.host in self.withgae_sites or handler.host.endswith(self.withgae_sites_postfix):
+            plugin = 'gae'
         elif handler.host in self.withphp_sites or handler.host.endswith(self.withphp_sites_postfix):
-            return 'php', {}
+            plugin = 'php'
         elif handler.host in self.withvps_sites or handler.host.endswith(self.withvps_sites_postfix):
-            return 'vps', {}
-        else:
-            pass
+            plugin = 'vps'
+        if plugin:
+            if handler.command == 'CONNECT':
+                do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
+                return 'strip', {'do_ssl_handshake': do_ssl_handshake}
+            else:
+                return plugin, {}
 
 
 class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
