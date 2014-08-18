@@ -33,6 +33,8 @@ Comment=GoAgent GTK Launcher
 ''' % (python2, dirname , scriptname , dirname)
     #sometimes maybe  /etc/xdg/autostart , ~/.kde/Autostart/ , ~/.config/openbox/autostart
     for dirname in map(os.path.expanduser, ['~/.config/autostart']):
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
         if os.path.isdir(dirname):
             filename = os.path.join(dirname, 'goagent-gtk.desktop')
             with open(filename, 'w') as fp:
