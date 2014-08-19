@@ -37,8 +37,8 @@ import OpenSSL
 import dnslib
 
 
-gevent = sys.modules.get('gevent', None)
-NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
+gevent = sys.modules.get('gevent') or logging.warn('please enable gevent.')
+NetWorkError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
 try:
@@ -418,8 +418,6 @@ class SSLConnection(object):
         else:
             ssl_context.set_verify(OpenSSL.SSL.VERIFY_NONE, lambda c, x, e, d, ok: ok)
         ssl_context.set_cipher_list(':'.join(cipher_suites))
-        # if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
-        #     ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
         return ssl_context
 
 
@@ -771,7 +769,7 @@ def forward_socket(local, remote, timeout, bufsize):
                 dest.sendall(data)
         except socket.timeout:
             pass
-        except NetWorkIOError as e:
+        except NetWorkError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
             if e.args[0] in (errno.EBADF,):
@@ -810,7 +808,7 @@ def deprecated_forward_socket(local, remote, timeout, bufsize):
                     timecount = timeout
     except socket.timeout:
         pass
-    except NetWorkIOError as e:
+    except NetWorkError as e:
         if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
             raise
         if e.args[0] in (errno.EBADF,):
@@ -838,7 +836,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
     def finish_request(self, request, client_address):
         try:
             self.RequestHandlerClass(request, client_address, self)
-        except NetWorkIOError as e:
+        except NetWorkError as e:
             if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
@@ -846,7 +844,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         """make ThreadingTCPServer happy"""
         exc_info = sys.exc_info()
         error = exc_info and len(exc_info) and exc_info[1]
-        if isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write retry' in error.args[1]:
+        if isinstance(error, NetWorkError) and len(error.args) > 1 and 'bad write retry' in error.args[1]:
             exc_info = error = None
         else:
             del exc_info, error
@@ -955,7 +953,7 @@ class StripPlugin(BaseFetchPlugin):
                 handler.send_error(400)
                 handler.wfile.close()
                 return
-        except NetWorkIOError as e:
+        except NetWorkError as e:
             if e.args[0] in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 handler.close_connection = 1
                 return
@@ -963,7 +961,7 @@ class StripPlugin(BaseFetchPlugin):
                 raise
         try:
             handler.do_METHOD()
-        except NetWorkIOError as e:
+        except NetWorkError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
 
@@ -1080,16 +1078,6 @@ class MIMTProxyHandlerFilter(BaseProxyHandlerFilter):
         else:
             return 'direct', {}
 
-class JumpLastFilter(BaseProxyHandlerFilter):
-    """jumplast(aka withgae) filter"""
-    def __init__(self, jumplast_sites):
-        self.jumplast_sites = set(jumplast_sites)
-
-    def filter(self, handler):
-        if handler.host in self.jumplast_sites:
-            logging.debug('JumpLastFilter metched %r %r', handler.path, handler.headers)
-            return handler.handler_filters[-1].filter(handler)
-
 
 class DirectRegionFilter(BaseProxyHandlerFilter):
     """direct region filter"""
@@ -1111,7 +1099,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
-            if hostname.startswith('127.') or hostname.startswith('192.168.') or hostname.startswith('10.'):
+            if hostname.startswith(('127.', '192.168.', '10.')):
                 return 'LOCAL'
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
@@ -1391,7 +1379,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
         """make python2 BaseHTTPRequestHandler happy"""
         try:
             BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
-        except NetWorkIOError as e:
+        except NetWorkError as e:
             if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
