@@ -53,7 +53,7 @@ import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
-sys.path = ['packages.egg/noarch'] + sys.path + ['packages.egg/' + sysconfig.get_platform().split('-')[0]]
+sys.path = [(os.path.dirname(__file__) or '.') + '/packages.egg/noarch'] + sys.path + [(os.path.dirname(__file__) or '.') + '/packages.egg/' + sysconfig.get_platform().split('-')[0]]
 
 import gevent
 import gevent.socket
