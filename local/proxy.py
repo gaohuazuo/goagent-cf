@@ -47,41 +47,43 @@
 
 __version__ = '3.1.22'
 
-import sys
 import os
+import sys
 import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
 sys.path = [(os.path.dirname(__file__) or '.') + '/packages.egg/noarch'] + sys.path + [(os.path.dirname(__file__) or '.') + '/packages.egg/' + sysconfig.get_platform().split('-')[0]]
 
-import gevent
-import gevent.socket
-import gevent.server
-import gevent.queue
-import gevent.monkey
-gevent.monkey.patch_all()
+try:
+    __import__('gevent.monkey', fromlist=['.']).patch_all()
+except (ImportError, SystemError):
+    sys.exit(sys.stderr.write('please install python-gevent\n'))
 
-import errno
-import time
-import struct
-import collections
-import zlib
-import httplib
-import re
-import io
-import traceback
-import random
 import base64
-import urlparse
-import threading
-import thread
+import collections
+import ConfigParser
+import errno
+import httplib
+import io
+import Queue
+import random
+import re
 import socket
 import ssl
-import Queue
-import ConfigParser
+import struct
+import thread
+import threading
+import time
+import traceback
 import urllib2
+import urlparse
+import zlib
 
+import gevent
+import gevent.queue
+import gevent.server
+import gevent.socket
 import OpenSSL
 
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
