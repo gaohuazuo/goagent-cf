@@ -109,7 +109,7 @@ def application(environ, start_response):
         raise StopIteration
 
     if 'rc4' in options and not __password__:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
         yield message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again')
         raise StopIteration
 
@@ -130,7 +130,7 @@ def application(environ, start_response):
         url = headers.pop('G-Url')
     except (zlib.error, KeyError, ValueError):
         import traceback
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
         yield message_html('500 Internal Server Error', 'Bad Request (metadata) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc())
         raise StopIteration
 
@@ -147,36 +147,37 @@ def application(environ, start_response):
     #logging.info('request headers=%s', headers)
 
     if __password__ and __password__ != kwargs.get('password', ''):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
         yield message_html('403 Wrong password', 'Wrong password(%r)' % kwargs.get('password', ''), 'GoAgent proxy.ini password is wrong!')
         raise StopIteration
 
     netloc = urlparse.urlparse(url).netloc
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
         yield message_html('403 Hosts Deny', 'Hosts Deny(%r)' % netloc, detail='url=%r' % url)
         raise StopIteration
 
     if len(url) > MAX_URL_LENGTH:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
         yield message_html('400 Bad Request', 'length of URL too long(greater than %r)' % MAX_URL_LENGTH, detail='url=%r' % url)
         raise StopIteration
 
     if netloc.startswith(('127.0.0.', '::1', 'localhost')):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
         html = ''.join('<a href="https://%s/">%s</a><br/>' % (x, x) for x in ('google.com', 'mail.google.com'))
         yield message_html('GoAgent %s is Running' % __version__, 'Now you can visit some websites', html)
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '405')])
         yield message_html('405 Method Not Allowed', 'Method Not Allowed: %r' % method, detail='Method Not Allowed URL=%r' % url)
         raise StopIteration
 
     deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
+    fetchmaxsize = int(kwargs.get('fetchmaxsize', 0))
     # https://www.freebsdchina.org/forum/viewtopic.php?t=54269
     accept_encoding = headers.get('Accept-Encoding', '') or headers.get('Bccept-Encoding', '')
     errors = []
@@ -202,12 +203,12 @@ def application(environ, start_response):
             logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
             if m is None:
-                headers['Range'] = 'bytes=0-%d' % int(kwargs.get('fetchmaxsize', URLFETCH_MAXSIZE))
+                headers['Range'] = 'bytes=0-%d' % (fetchmaxsize or URLFETCH_MAXSIZE)
             else:
                 headers.pop('Range', '')
                 headers.pop('range', '')
                 start = int(m.group(1))
-                headers['Range'] = 'bytes=%s-%d' % (start, start+int(kwargs.get('fetchmaxsize', URLFETCH_MAXSIZE)))
+                headers['Range'] = 'bytes=%s-%d' % (start, start+(fetchmaxsize or URLFETCH_MAXSIZE))
             deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.SSLCertificateError as e:
             errors.append('%r, should validate=0 ?' % e)
@@ -217,7 +218,7 @@ def application(environ, start_response):
             if i == 0 and method == 'GET':
                 deadline = URLFETCH_TIMEOUT * 2
     else:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '502')])
         error_string = '<br />\n'.join(errors)
         if not error_string:
             logurl = 'https://appengine.google.com/logs?&app_id=%s' % os.environ['APPLICATION_ID']
@@ -230,7 +231,9 @@ def application(environ, start_response):
     data = response.content
     response_headers = response.headers
     content_type = response_headers.get('content-type', '')
-    if 'content-encoding' not in response_headers and 512 < len(response.content) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
+    if fetchmaxsize and response_headers.get('accept-ranges', '').lower() == 'bytes' and int(response_headers.get('content-length', 0)):
+        data = data[:fetchmaxsize]
+    if 'content-encoding' not in response_headers and 512 < len(data) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
         if 'gzip' in accept_encoding:
             response_headers['Content-Encoding'] = 'gzip'
             compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
