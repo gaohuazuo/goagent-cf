@@ -228,12 +228,15 @@ def application(environ, start_response):
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
+    status_code = int(response.status_code)
     data = response.content
     response_headers = response.headers
     content_type = response_headers.get('content-type', '')
-    if fetchmaxsize and response_headers.get('accept-ranges', '').lower() == 'bytes' and int(response_headers.get('content-length', 0)):
+    if status_code == 200 and fetchmaxsize and len(data) > fetchmaxsize and response_headers.get('accept-ranges', '').lower() == 'bytes' and int(response_headers.get('content-length', 0)):
+        status_code = 206
+        response_headers['Content-Range'] = 'bytes 0-%d/%d' % (fetchmaxsize-1, len(data))
         data = data[:fetchmaxsize]
-    if 'content-encoding' not in response_headers and 512 < len(data) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
+    if status_code == 200 and 'content-encoding' not in response_headers and 512 < len(data) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
         if 'gzip' in accept_encoding:
             response_headers['Content-Encoding'] = 'gzip'
             compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
@@ -250,11 +253,11 @@ def application(environ, start_response):
     response_headers_data = deflate('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))
     if 'rc4' not in options or content_type.startswith(('audio/', 'image/', 'video/')):
         start_response('200 OK', [('Content-Type', __content_type__)])
-        yield struct.pack('!hh', int(response.status_code), len(response_headers_data))+response_headers_data
+        yield struct.pack('!hh', status_code, len(response_headers_data))+response_headers_data
         yield data
     else:
         start_response('200 OK', [('Content-Type', __content_type__), ('X-GOA-Options', 'rc4')])
-        yield struct.pack('!hh', int(response.status_code), len(response_headers_data))
+        yield struct.pack('!hh', status_code, len(response_headers_data))
         yield RC4Cipher(__password__).encrypt(response_headers_data)
         yield RC4Cipher(__password__).encrypt(data)
 
