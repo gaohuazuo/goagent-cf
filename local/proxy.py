@@ -1363,10 +1363,14 @@ class Common(object):
                     logging.info('%s remote host=%r failed: %s', str(dnslib_resolve).split()[1], host, e)
                     time.sleep(1)
         result_queue = Queue.Queue()
+        pool = __import__('gevent.pool', fromlist=['.']).Pool(10) if sys.modules.get('gevent') else None
         for host in hosts:
             for dnsserver in self.DNS_SERVERS:
                 logging.debug('remote resolve host=%r from dnsserver=%r', host, dnsserver)
-                thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
+                if pool:
+                    pool.spawn(do_remote_resolve, host, dnsserver, result_queue)
+                else:
+                    thread.start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
         for _ in xrange(len(self.DNS_SERVERS) * len(hosts) * 2):
             try:
                 host, dnsserver, iplist = result_queue.get(timeout=16)
