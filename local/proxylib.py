@@ -1631,9 +1631,11 @@ class MultipleConnectionMixin(object):
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
         #logging.info('gethostbyname2(%r) return %d addresses', hostname, len(addresses))
         sock = None
-        for i in range(kwargs.get('max_retry', 5)):
+        for i in range(kwargs.get('max_retry', 4)):
             reorg_ipaddrs()
             window = self.max_window + i
+            if len(self.tcp_connection_good_ipaddrs) <= 1.5 * window:
+                window += 2
             good_ipaddrs = [x for x in addresses if x in self.tcp_connection_good_ipaddrs]
             good_ipaddrs = sorted(good_ipaddrs, key=self.tcp_connection_time.get)[:window]
             unknown_ipaddrs = [x for x in addresses if x not in self.tcp_connection_good_ipaddrs and x not in self.tcp_connection_bad_ipaddrs]
@@ -1776,7 +1778,7 @@ class MultipleConnectionMixin(object):
                 if ipaddr not in self.ssl_connection_good_ipaddrs:
                     self.ssl_connection_good_ipaddrs[ipaddr] = handshaked_time
                 # verify SSL certificate.
-                if validate and hostname.endswith('.appspot.com'):
+                if validate and (hostname.endswith('.appspot.com') or '.google' in hostname):
                     cert = ssl_sock.get_peer_certificate()
                     commonname = next((v for k, v in cert.get_subject().get_components() if k == 'CN'))
                     if '.google' not in commonname and not commonname.endswith('.appspot.com'):
@@ -1839,9 +1841,11 @@ class MultipleConnectionMixin(object):
         addresses = [(x, port) for x in self.gethostbyname2(hostname)]
         #logging.info('gethostbyname2(%r) return %d addresses', hostname, len(addresses))
         sock = None
-        for i in range(kwargs.get('max_retry', 5)):
+        for i in range(kwargs.get('max_retry', 4)):
             reorg_ipaddrs()
             window = self.max_window + i
+            if len(self.ssl_connection_good_ipaddrs) <= 1.5 * window:
+                window += 2
             good_ipaddrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
             good_ipaddrs = sorted(good_ipaddrs, key=self.ssl_connection_time.get)[:window]
             unknown_ipaddrs = [x for x in addresses if x not in self.ssl_connection_good_ipaddrs and x not in self.ssl_connection_bad_ipaddrs]
