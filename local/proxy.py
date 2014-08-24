@@ -379,7 +379,7 @@ class RangeFetch(object):
 
 
 class GAEFetchPlugin(BaseFetchPlugin):
-    """direct fetch plugin"""
+    """gae fetch plugin"""
     connect_timeout = 4
     max_retry = 2
 
@@ -544,7 +544,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
 
 
 class PHPFetchPlugin(BaseFetchPlugin):
-    """direct fetch plugin"""
+    """php fetch plugin"""
     connect_timeout = 4
     def __init__(self, fetchservers, password, validate):
         BaseFetchPlugin.__init__(self)
@@ -700,7 +700,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 
 
 class WithGAEFilter(BaseProxyHandlerFilter):
-    """force https filter"""
+    """withgae/withphp/withvps filter"""
     def __init__(self, withgae_sites, withphp_sites, withvps_sites):
         self.withgae_sites = set(x for x in withgae_sites if not x.startswith('.'))
         self.withgae_sites_postfix = tuple(x for x in withgae_sites if x.startswith('.'))
@@ -768,7 +768,7 @@ class ProxyGAEProxyHandler(ProxyConnectionMixin, GAEProxyHandler):
 
 
 class PHPFetchFilter(BaseProxyHandlerFilter):
-    """force https filter"""
+    """php fetch filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
             return 'strip', {}
@@ -776,8 +776,14 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
             return 'php', {}
 
 
+class VPSFetchFilter(BaseProxyHandlerFilter):
+    """vps fetch filter"""
+    def filter(self, handler):
+        return 'vps', {}
+
+
 class PHPProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
-    """GAE Proxy Handler"""
+    """PHP Proxy Handler"""
     handler_filters = [PHPFetchFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
