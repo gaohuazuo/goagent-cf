@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.18'
+__version__ = '3.1.23'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -177,7 +177,7 @@ def application(environ, start_response):
 
     deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
-    fetchmaxsize = int(kwargs.get('fetchmaxsize', 0))
+    maxsize = int(kwargs.get('maxsize', 0))
     # https://www.freebsdchina.org/forum/viewtopic.php?t=54269
     accept_encoding = headers.get('Accept-Encoding', '') or headers.get('Bccept-Encoding', '')
     errors = []
@@ -203,12 +203,12 @@ def application(environ, start_response):
             logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
             if m is None:
-                headers['Range'] = 'bytes=0-%d' % (fetchmaxsize or URLFETCH_MAXSIZE)
+                headers['Range'] = 'bytes=0-%d' % (maxsize or URLFETCH_MAXSIZE)
             else:
                 headers.pop('Range', '')
                 headers.pop('range', '')
                 start = int(m.group(1))
-                headers['Range'] = 'bytes=%s-%d' % (start, start+(fetchmaxsize or URLFETCH_MAXSIZE))
+                headers['Range'] = 'bytes=%s-%d' % (start, start+(maxsize or URLFETCH_MAXSIZE))
             deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.SSLCertificateError as e:
             errors.append('%r, should validate=0 ?' % e)
@@ -232,10 +232,10 @@ def application(environ, start_response):
     data = response.content
     response_headers = response.headers
     content_type = response_headers.get('content-type', '')
-    if status_code == 200 and fetchmaxsize and len(data) > fetchmaxsize and response_headers.get('accept-ranges', '').lower() == 'bytes' and int(response_headers.get('content-length', 0)):
+    if status_code == 200 and maxsize and len(data) > maxsize and response_headers.get('accept-ranges', '').lower() == 'bytes' and int(response_headers.get('content-length', 0)):
         status_code = 206
-        response_headers['Content-Range'] = 'bytes 0-%d/%d' % (fetchmaxsize-1, len(data))
-        data = data[:fetchmaxsize]
+        response_headers['Content-Range'] = 'bytes 0-%d/%d' % (maxsize-1, len(data))
+        data = data[:maxsize]
     if status_code == 200 and 'content-encoding' not in response_headers and 512 < len(data) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
         if 'gzip' in accept_encoding:
             response_headers['Content-Encoding'] = 'gzip'
