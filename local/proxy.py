@@ -679,19 +679,21 @@ class HostsFilter(BaseProxyHandlerFilter):
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
-    """force https filter"""
+    """gae fetch filter"""
+    #https://github.com/AppScale/gae_sdk/blob/master/google/appengine/api/taskqueue/taskqueue.py#L241
+    MAX_URL_LENGTH = 2083
     def filter(self, handler):
         """https://developers.google.com/appengine/docs/python/urlfetch/"""
         if handler.command == 'CONNECT':
             do_ssl_handshake = 440 <= handler.port <= 450 or 1024 <= handler.port <= 65535
             return 'strip', {'do_ssl_handshake': do_ssl_handshake}
-        elif handler.command in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
+        elif handler.command in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH') and handler.path <= self.MAX_URL_LENGTH:
             return 'gae', {}
         else:
             if 'php' in handler.handler_plugins:
                 return 'php', {}
             else:
-                logging.warning('"%s %s" not supported by GAE, please enable PHP mode!', handler.command, handler.host)
+                logging.warning('"%s %s" not supported by GAE, please enable PHP mode!', handler.command, handler.path)
                 return 'direct', {}
 
 
