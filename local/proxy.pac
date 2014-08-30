@@ -13,6 +13,7 @@ function FindProxyForURL(url, host) {
                host == 'p.tanx.com' ||
                host == 'a.alimama.cn' ||
                host == 'pagead2.googlesyndication.com' ||
+               dnsDomainIs(host, '.google-analytics.com') ||
                dnsDomainIs(host, '.2mdn.net') ||
                dnsDomainIs(host, '.doubleclick.net')) {
         return blackhole;
