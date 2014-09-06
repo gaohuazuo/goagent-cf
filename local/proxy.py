@@ -1566,7 +1566,7 @@ def pre_start():
     if common.CRLF_SITES:
         GAEProxyHandler.handler_filters.insert(0, CRLFSitesFilter(common.CRLF_SITES, common.NOCRLF_SITES))
     if common.URLREWRITE_MAP:
-        GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter(common.URLREWRITE_MAP))
+        GAEProxyHandler.handler_filters.insert(0, URLRewriteFilter(common.URLREWRITE_MAP, common.FORCEHTTPS_SITES, common.NOFORCEHTTPS_SITES))
     if common.FAKEHTTPS_SITES:
         GAEProxyHandler.handler_filters.insert(0, FakeHttpsFilter(common.FAKEHTTPS_SITES, common.NOFAKEHTTPS_SITES))
     if common.FORCEHTTPS_SITES:
