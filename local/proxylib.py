@@ -1202,7 +1202,7 @@ class CRLFSitesFilter(BaseProxyHandlerFilter):
 
 class URLRewriteFilter(BaseProxyHandlerFilter):
     """url rewrite filter"""
-    def __init__(self, urlrewrite_map):
+    def __init__(self, urlrewrite_map, forcehttps_sites, noforcehttps_sites):
         self.urlrewrite_map = {}
         for regex, repl in urlrewrite_map.items():
             mo = re.search(r'://([^/:]+)', regex)
@@ -1214,6 +1214,8 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
             if not mo:
                 logging.warning('URLRewriteFilter does not support wildcard host: %r', addr)
             self.urlrewrite_map.setdefault(addr, []).append((re.compile(regex).search, repl))
+        self.forcehttps_sites = tuple(forcehttps_sites)
+        self.noforcehttps_sites = set(noforcehttps_sites)
 
     def filter(self, handler):
         if handler.host not in self.urlrewrite_map:
@@ -1230,6 +1232,10 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
     def filter_redirect(self, handler, mo, repl):
         for i, g in enumerate(mo.groups()):
             repl = repl.replace('$%d' % (i+1), urllib.unquote_plus(g))
+        if repl.startswith('http://') and self.forcehttps_sites:
+            hostname = urlparse.urlsplit(repl).hostname
+            if hostname.endswith(self.forcehttps_sites) and hostname not in self.noforcehttps_sites:
+                repl = 'https://%s' % repl[len('http://'):]
         headers = {'Location': repl, 'Connection': 'close'}
         return 'mock', {'status': 301, 'headers': headers, 'body': ''}
 
