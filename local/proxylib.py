@@ -122,6 +122,9 @@ class LRUCache(object):
     def __contains__(self, key):
         return key in self.cache
 
+    def __len__(self):
+        return len(self.cache)
+
     def _mark(self, key):
         if key in self.key_order:
             self.key_order.remove(key)
@@ -389,6 +392,11 @@ class SSLConnection(object):
             return self.__iowait(self._connection.recv, bufsiz, flags)
         except OpenSSL.SSL.ZeroReturnError:
             return ''
+        except OpenSSL.SSL.SysCallError as e:
+            if e[0] == -1 and 'Unexpected EOF' in e[1]:
+                # errors when reading empty strings are expected and can be ignored
+                return ''
+            raise
 
     def read(self, bufsiz, flags=0):
         return self.recv(bufsiz, flags)
@@ -920,6 +928,22 @@ class MockFetchPlugin(BaseFetchPlugin):
 
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
+
+    def __init__(self, cache_size=128):
+        self.ssl_context_cache = LRUCache(cache_size)
+
+    def get_ssl_context_by_certfile(self, certfile):
+        try:
+            return self.ssl_context_cache[certfile]
+        except LookupError:
+            context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+            with open(certfile, 'rb') as fp:
+                pem = fp.read()
+                context.use_certificate(OpenSSL.crypto.load_certificate(OpenSSL.SSL.FILETYPE_PEM, pem))
+                context.use_privatekey(OpenSSL.crypto.load_privatekey(OpenSSL.SSL.FILETYPE_PEM, pem))
+            self.ssl_context_cache[certfile] = context
+            return context
+
     def handle(self, handler, do_ssl_handshake=True):
         """strip connect"""
         certfile = CertUtil.get_cert(handler.host)
@@ -928,7 +952,10 @@ class StripPlugin(BaseFetchPlugin):
         handler.end_headers()
         if do_ssl_handshake:
             try:
-                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
+                #ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
+                ssl_sock = SSLConnection(self.get_ssl_context_by_certfile(certfile), handler.connection)
+                ssl_sock.set_accept_state()
+                ssl_sock.do_handshake()
             except StandardError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
