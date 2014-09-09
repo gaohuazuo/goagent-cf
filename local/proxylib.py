@@ -929,31 +929,39 @@ class MockFetchPlugin(BaseFetchPlugin):
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
 
-    def __init__(self, cache_size=128):
-        self.ssl_context_cache = LRUCache(cache_size)
+    def __init__(self, ssl_version='TLSv1', cipher_suites=('ALL', '!aNULL', '!eNULL'), cache_size=128):
+        self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
+        self.cipher_suites = cipher_suites
+        self.ssl_context_cache = LRUCache(cache_size*2)
 
-    def get_ssl_context_by_certfile(self, certfile):
+    def get_ssl_context_by_hostname(self, hostname):
         try:
-            return self.ssl_context_cache[certfile]
+            return self.ssl_context_cache[hostname]
         except LookupError:
-            context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+            context = OpenSSL.SSL.Context(self.ssl_method)
+            certfile = CertUtil.get_cert(hostname)
+            if certfile in self.ssl_context_cache:
+                context = self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile]
+                return context
             with open(certfile, 'rb') as fp:
                 pem = fp.read()
                 context.use_certificate(OpenSSL.crypto.load_certificate(OpenSSL.SSL.FILETYPE_PEM, pem))
                 context.use_privatekey(OpenSSL.crypto.load_privatekey(OpenSSL.SSL.FILETYPE_PEM, pem))
-            self.ssl_context_cache[certfile] = context
+            if self.cipher_suites:
+                context.set_cipher_list(':'.join(self.cipher_suites))
+            self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile] = context
             return context
 
     def handle(self, handler, do_ssl_handshake=True):
         """strip connect"""
-        certfile = CertUtil.get_cert(handler.host)
         logging.info('%s "STRIP %s %s:%d %s" - -', handler.address_string(), handler.command, handler.host, handler.port, handler.protocol_version)
         handler.send_response(200)
         handler.end_headers()
         if do_ssl_handshake:
             try:
+                #certfile = CertUtil.get_cert(handler.host)
                 #ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
-                ssl_sock = SSLConnection(self.get_ssl_context_by_certfile(certfile), handler.connection)
+                ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
                 ssl_sock.set_accept_state()
                 ssl_sock.do_handshake()
             except StandardError as e:
@@ -1406,7 +1414,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     handler_filters = [SimpleProxyHandlerFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
-                       'strip': StripPlugin(),}
+                       'strip': StripPlugin('SSLv23', ('RC4-SHA', '!aNULL', '!eNULL')),}
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
