@@ -354,7 +354,11 @@ class RangeFetch(object):
                             if self._stopped:
                                 response.close()
                                 return
-                            data = response.read(self.bufsize)
+                            data = None
+                            with gevent.Timeout(1, False):
+                                data = response.read(self.bufsize)
+                            if data is None:
+                                logging.warning('response.read(%r) timeout', self.bufsize)
                             if not data:
                                 break
                             data_queue.put((start, data))
@@ -453,7 +457,11 @@ class GAEFetchPlugin(BaseFetchPlugin):
             handler.end_headers()
             bufsize = 8192
             while True:
-                data = response.read(bufsize)
+                data = None
+                with gevent.Timeout(2, False):
+                    data = response.read(bufsize)
+                if data is None:
+                    logging.warning('response.read(%r) timeout', bufsize)
                 if data:
                     handler.wfile.write(data)
                 if not data:
