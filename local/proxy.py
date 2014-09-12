@@ -355,7 +355,7 @@ class RangeFetch(object):
                                 response.close()
                                 return
                             data = None
-                            with gevent.Timeout(1, False):
+                            with gevent.Timeout(max(1, self.bufsize//8192), False):
                                 data = response.read(self.bufsize)
                             if data is None:
                                 logging.warning('response.read(%r) timeout', self.bufsize)
