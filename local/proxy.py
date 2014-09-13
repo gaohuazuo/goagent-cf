@@ -854,8 +854,21 @@ class PacUtil(object):
             need_update = False
             logging.exception('update_pacfile failed: %r', e)
         try:
-            logging.info('try download %r to update_pacfile(%r)', common.PAC_GFWLIST, filename)
-            autoproxy_content = base64.b64decode(opener.open(common.PAC_GFWLIST).read())
+            autoproxy_content_list = []
+            for url in common.PAC_GFWLIST.split('|'):
+                logging.info('try download %r to update_pacfile(%r)', url, filename)
+                if url.startswith('file://'):
+                    try:
+                        with open(url[len('file://'):], 'rb') as fp:
+                            autoproxy_content_list.append(fp.read())
+                    except IOError as e:
+                        logging.warning('PacUtil load %r failed: %r', url, e)
+                else:
+                    url_content = opener.open(url).read()
+                    if not any(x in url_content for x in '!-@|'):
+                        url_content = base64.b64decode(url_content)
+                    autoproxy_content_list.append(url_content)
+            autoproxy_content = '\n'.join(autoproxy_content_list)
             logging.info('%r downloaded, try convert it with autoproxy2pac_lite', common.PAC_GFWLIST)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
                 jsrule = gevent.get_hub().threadpool.apply_e(Exception, PacUtil.autoproxy2pac_lite, (autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default))
