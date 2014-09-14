@@ -320,7 +320,7 @@ class RangeFetch(object):
                 except Queue.Empty:
                     continue
                 except Exception as e:
-                    logging.warning("Response %r in __fetchlet", e)
+                    logging.warning("RangeFetch fetch response %r in __fetchlet", e)
                     range_queue.put((start, end, None))
                     continue
                 if not response:
@@ -343,7 +343,7 @@ class RangeFetch(object):
                 if 200 <= response.status < 300:
                     content_range = response.getheader('Content-Range')
                     if not content_range:
-                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.handler.command, self.url, content_range, response.getheaders())
+                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r, retry %s-%s', self.handler.command, self.url, content_range, response.getheaders(), start, end)
                         response.close()
                         range_queue.put((start, end, None))
                         continue
@@ -357,8 +357,6 @@ class RangeFetch(object):
                             data = None
                             with gevent.Timeout(max(1, self.bufsize//8192), False):
                                 data = response.read(self.bufsize)
-                            if data is None:
-                                logging.warning('response.read(%r) timeout', self.bufsize)
                             if not data:
                                 break
                             data_queue.put((start, data))
