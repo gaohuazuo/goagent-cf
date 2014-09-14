@@ -292,7 +292,7 @@ class RangeFetch(object):
                 self.handler.wfile.write(data)
                 self.expect_begin += len(data)
                 del data
-            except StandardError as e:
+            except Exception as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
@@ -319,7 +319,7 @@ class RangeFetch(object):
                         response = self.plugin.fetch(self.handler, self.handler.command, self.url, headers, self.handler.body, timeout=self.handler.connect_timeout, fetchserver=fetchserver, **self.kwargs)
                 except Queue.Empty:
                     continue
-                except StandardError as e:
+                except Exception as e:
                     logging.warning("Response %r in __fetchlet", e)
                     range_queue.put((start, end, None))
                     continue
