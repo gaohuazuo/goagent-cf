@@ -525,7 +525,9 @@ class GAEFetchPlugin(BaseFetchPlugin):
         response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
-        if response.status != 200 or int(response.msg.get('status', 200)) >= 400:
+        if response.status == 200 and response.msg.get('status'):
+            response.status = int(response.msg.get('status'))
+        if response.status != 200:
             return response
         data = response.read(4)
         if len(data) < 4:
