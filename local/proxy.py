@@ -415,7 +415,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 if response.app_status < 400:
                     break
                 else:
-                    if response.app_status >= 500:
+                    if response.app_status == 503:
                         # appid over qouta, switch to next appid
                         if len(self.appids) > 1:
                             self.appids.append(self.appids.pop(0))
@@ -497,7 +497,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
         metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
         # prepare GAE request
         request_method = 'POST'
-        fetchserver = kwargs.get('fetchserver') or '%s://%s.appspot.com%s' % (self.mode, self.appids[0], self.path)
+        fetchserver_index = random.randint(0, len(self.appids)-1) if 'Range' in headers else 0
+        fetchserver = kwargs.get('fetchserver') or '%s://%s.appspot.com%s' % (self.mode, self.appids[fetchserver_index], self.path)
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
