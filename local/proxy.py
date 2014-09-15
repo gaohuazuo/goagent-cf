@@ -1374,6 +1374,8 @@ class Common(object):
         self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|')) if self.CONFIG.get('dns', 'tcpover').strip() else tuple()
         if self.GAE_IPV6:
             self.DNS_SERVERS = [x for x in self.DNS_SERVERS if ':' in x]
+        else:
+            self.DNS_SERVERS = [x for x in self.DNS_SERVERS if ':' not in x]
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -1395,7 +1397,7 @@ class Common(object):
                     logging.info('%s remote host=%r failed: %s', str(dnslib_resolve).split()[1], host, e)
                     time.sleep(1)
         result_queue = Queue.Queue()
-        pool = __import__('gevent.pool', fromlist=['.']).Pool(10) if sys.modules.get('gevent') else None
+        pool = __import__('gevent.pool', fromlist=['.']).Pool(8) if sys.modules.get('gevent') else None
         for host in hosts:
             for dnsserver in self.DNS_SERVERS:
                 logging.debug('remote resolve host=%r from dnsserver=%r', host, dnsserver)
