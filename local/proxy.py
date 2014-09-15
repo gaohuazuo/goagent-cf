@@ -418,7 +418,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 if response.app_status < 400:
                     break
                 else:
-                    if response.app_status == 503:
+                    if response.app_status >= 500:
                         # appid over qouta, switch to next appid
                         if len(self.appids) > 1:
                             self.appids.append(self.appids.pop(0))
@@ -526,8 +526,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status == 200 and response.msg.get('status'):
-            response.status = int(response.msg.get('status'))
-        if response.status != 200:
+            response.app_status = response.status = int(response.msg.get('status'))
+        if response.app_status != 200:
             return response
         data = response.read(4)
         if len(data) < 4:
