@@ -45,7 +45,7 @@
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
 
-__version__ = '3.1.23'
+__version__ = '3.1.24'
 
 import os
 import sys
@@ -81,9 +81,6 @@ import urlparse
 import zlib
 
 import gevent
-import gevent.queue
-import gevent.server
-import gevent.socket
 import OpenSSL
 
 NetWorkIOError = (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
