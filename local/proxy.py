@@ -1223,7 +1223,7 @@ class Common(object):
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
-        self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
+        self.GAE_IPV6 = self.CONFIG.getint('gae', 'ipv6')
         self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
         self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive')
         self.GAE_CACHESOCK = self.CONFIG.getint('gae', 'cachesock')
@@ -1236,17 +1236,15 @@ class Common(object):
         self.GAE_PAGESPEED = self.CONFIG.getint('gae', 'pagespeed') if self.CONFIG.has_option('gae', 'pagespeed') else 0
         self.GAE_MAXSIZE = self.CONFIG.getint('gae', 'maxsize')
 
-        if self.GAE_PROFILE == 'auto':
+        if self.GAE_IPV6:
             try:
                 socket.create_connection(('2001:4860:4860::8888', 53), timeout=1).close()
-                logging.info('Use profile ipv6')
-                self.GAE_PROFILE = 'ipv6'
             except socket.error as e:
-                logging.info('Fail try profile ipv6 %r, fallback ipv4', e)
-                self.GAE_PROFILE = 'ipv4'
+                logging.info('Fail try use ipv6 %r, fallback ipv4', e)
+                self.GAE_IPV6 = 0
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
-            self.CONFIG.set('profile/%s' % self.GAE_PROFILE, '.' + os.environ['USERDNSDOMAIN'], '')
+            self.CONFIG.set('profile', '.' + os.environ['USERDNSDOMAIN'], '')
 
         urlrewrite_map = collections.OrderedDict()
         host_map = collections.OrderedDict()
@@ -1265,7 +1263,7 @@ class Common(object):
         nofakehttps_sites = []
         dns_servers = []
 
-        for site, rule in self.CONFIG.items('profile/%s' % self.GAE_PROFILE):
+        for site, rule in self.CONFIG.items('profile'):
             rules = [x.strip() for x in re.split(r'[,\|]', rule) if x.strip()]
             if site == 'dns':
                 dns_servers = rules
@@ -1374,6 +1372,8 @@ class Common(object):
         self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
         self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
         self.DNS_TCPOVER = tuple(self.CONFIG.get('dns', 'tcpover').split('|')) if self.CONFIG.get('dns', 'tcpover').strip() else tuple()
+        if self.GAE_IPV6:
+            self.DNS_SERVERS = [x for x in self.DNS_SERVERS if ':' in x]
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -1407,8 +1407,11 @@ class Common(object):
             try:
                 host, dnsserver, iplist = result_queue.get(timeout=16)
                 logging.debug('%r remote host=%r return %s', dnsserver, host, iplist)
-                if host.endswith('.google.com'):
-                    iplist = [x for x in iplist if is_google_ip(x)]
+                if '.google' in host:
+                    if self.GAE_IPV6:
+                        iplist = [x for x in iplist if ':' in x]
+                    else:
+                        iplist = [x for x in iplist if is_google_ip(x)]
                 new_iplist += iplist
             except Queue.Empty:
                 break
@@ -1421,15 +1424,14 @@ class Common(object):
             assert isinstance(host, basestring)
             for _ in xrange(3):
                 try:
-                    queue.put((host, socket.gethostbyname_ex(host)[-1]))
+                    iplist = [x[-1][0] for x in socket.getaddrinfo(host, 80)]
+                    queue.put((host, iplist))
                 except (socket.error, OSError) as e:
-                    logging.warning('socket.gethostbyname_ex host=%r failed: %s', host, e)
+                    logging.warning('socket.getaddrinfo host=%r failed: %s', host, e)
                     time.sleep(0.1)
         google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
-                continue
-            if name.endswith('_ipv6') and common.GAE_PROFILE != 'ipv6':
                 continue
             need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
             resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
@@ -1440,8 +1442,11 @@ class Common(object):
             for _ in xrange(len(need_resolve_remote)):
                 try:
                     host, iplist = result_queue.get(timeout=8)
-                    if host.endswith('.google.com'):
-                        iplist = [x for x in iplist if is_google_ip(x)]
+                    if name.startswith('google_'):
+                        if self.GAE_IPV6:
+                            iplist = [x for x in iplist if ':' in x]
+                        else:
+                            iplist = [x for x in iplist if is_google_ip(x)]
                     resolved_iplist += iplist
                 except Queue.Empty:
                     break
@@ -1455,7 +1460,7 @@ class Common(object):
                 resolved_iplist = list(set(resolved_iplist))
             if name.startswith('google_'):
                 resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
-            if len(resolved_iplist) == 0 and name in ('google_hk', 'google_cn') and self.GAE_PROFILE != 'ipv6':
+            if len(resolved_iplist) == 0 and name in ('google_hk', 'google_cn') and not self.GAE_IPV6:
                 logging.error('resolve %s host return empty! please retry!', name)
                 sys.exit(-1)
             logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
@@ -1479,7 +1484,7 @@ class Common(object):
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
         info += 'GAE Mode           : %s\n' % self.GAE_MODE
-        info += 'GAE Profile        : %s\n' % self.GAE_PROFILE if self.GAE_PROFILE else ''
+        info += 'GAE IPv6           : %s\n' % self.GAE_IPV6 if self.GAE_IPV6 else ''
         info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
         info += 'GAE Validate       : %s\n' % self.GAE_VALIDATE if self.GAE_VALIDATE else ''
         info += 'GAE Obfuscate      : %s\n' % self.GAE_OBFUSCATE if self.GAE_OBFUSCATE else ''
