@@ -370,12 +370,7 @@ class SSLConnection(object):
         return client, addr
 
     def do_handshake(self):
-        try:
-            self.__iowait(self._connection.do_handshake)
-        except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and 'Unexpected EOF' in e[1]:
-                return
-            raise
+        self.__iowait(self._connection.do_handshake)
 
     def connect(self, *args, **kwargs):
         return self.__iowait(self._connection.connect, *args, **kwargs)
@@ -969,7 +964,11 @@ class StripPlugin(BaseFetchPlugin):
                 ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
                 ssl_sock.set_accept_state()
                 ssl_sock.do_handshake()
-            except StandardError as e:
+            except OpenSSL.SSL.SysCallError as e:
+                if e[0] == -1 and 'Unexpected EOF' in e[1]:
+                    return
+                raise
+            except NetWorkError as e:
                 if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
                 return
