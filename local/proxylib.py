@@ -370,7 +370,12 @@ class SSLConnection(object):
         return client, addr
 
     def do_handshake(self):
-        return self.__iowait(self._connection.do_handshake)
+        try:
+            self.__iowait(self._connection.do_handshake)
+        except OpenSSL.SSL.SysCallError as e:
+            if e[0] == -1 and 'Unexpected EOF' in e[1]:
+                return
+            raise
 
     def connect(self, *args, **kwargs):
         return self.__iowait(self._connection.connect, *args, **kwargs)
