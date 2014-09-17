@@ -959,11 +959,11 @@ class StripPlugin(BaseFetchPlugin):
         handler.end_headers()
         if do_ssl_handshake:
             try:
-                #certfile = CertUtil.get_cert(handler.host)
-                #ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
-                ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
-                ssl_sock.set_accept_state()
-                ssl_sock.do_handshake()
+                certfile = CertUtil.get_cert(handler.host)
+                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
+                # ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
+                # ssl_sock.set_accept_state()
+                # ssl_sock.do_handshake()
             except OpenSSL.SSL.SysCallError as e:
                 if e[0] == -1 and 'Unexpected EOF' in e[1]:
                     return
@@ -1905,7 +1905,8 @@ class MultipleConnectionMixin(object):
             logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
-                thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
+                #thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
+                thread.start_new_thread(create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 sock = queobj.get()
                 if not isinstance(sock, Exception):
