@@ -1679,6 +1679,8 @@ class MultipleConnectionMixin(object):
         for i in range(kwargs.get('max_retry', 4)):
             reorg_ipaddrs()
             window = self.max_window + i
+            if len(self.ssl_connection_good_ipaddrs) > len(self.ssl_connection_bad_ipaddrs):
+                window = max(2, window-2)
             if len(self.tcp_connection_bad_ipaddrs)/2 >= len(self.tcp_connection_good_ipaddrs) <= 1.5 * window:
                 window += 2
             good_ipaddrs = [x for x in addresses if x in self.tcp_connection_good_ipaddrs]
@@ -1889,6 +1891,8 @@ class MultipleConnectionMixin(object):
         for i in range(kwargs.get('max_retry', 4)):
             reorg_ipaddrs()
             window = self.max_window + i
+            if len(self.ssl_connection_good_ipaddrs) > len(self.ssl_connection_bad_ipaddrs):
+                window = max(2, window-2)
             if len(self.ssl_connection_bad_ipaddrs)/2 >= len(self.ssl_connection_good_ipaddrs) <= 1.5 * window:
                 window += 2
             good_ipaddrs = [x for x in addresses if x in self.ssl_connection_good_ipaddrs]
