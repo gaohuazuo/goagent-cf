@@ -45,7 +45,7 @@
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
 
-__version__ = '3.1.24'
+__version__ = '3.1.25'
 
 import os
 import sys
@@ -1235,11 +1235,17 @@ class Common(object):
         self.GAE_MAXSIZE = self.CONFIG.getint('gae', 'maxsize')
 
         if self.GAE_IPV6:
+            sock = None
             try:
-                socket.create_connection(('2001:4860:4860::8888', 53), timeout=1).close()
-            except socket.error as e:
+                sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                sock.connect(('2001:4860:4860::8888', 53))
+                logging.info('use ipv6 interface %s for gae', sock.getpeername()[0])
+            except Exception as e:
                 logging.info('Fail try use ipv6 %r, fallback ipv4', e)
                 self.GAE_IPV6 = 0
+            finally:
+                if sock:
+                    sock.close()
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
             self.CONFIG.set('profile', '.' + os.environ['USERDNSDOMAIN'], '')
@@ -1424,7 +1430,8 @@ class Common(object):
             assert isinstance(host, basestring)
             for _ in xrange(3):
                 try:
-                    iplist = [x[-1][0] for x in socket.getaddrinfo(host, 80)]
+                    family = socket.AF_INET6 if self.GAE_IPV6 else socket.AF_INET
+                    iplist = [x[-1][0] for x in socket.getaddrinfo(host, 80, family)]
                     queue.put((host, iplist))
                 except (socket.error, OSError) as e:
                     logging.warning('socket.getaddrinfo host=%r failed: %s', host, e)
@@ -1442,11 +1449,6 @@ class Common(object):
             for _ in xrange(len(need_resolve_remote)):
                 try:
                     host, iplist = result_queue.get(timeout=8)
-                    if name.startswith('google_'):
-                        if self.GAE_IPV6:
-                            iplist = [x for x in iplist if ':' in x]
-                        else:
-                            iplist = [x for x in iplist if ':' not in x]
                     resolved_iplist += iplist
                 except Queue.Empty:
                     break
