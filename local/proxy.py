@@ -736,7 +736,7 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
     handler_filters = [GAEFetchFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
-                       'strip': StripPlugin('SSLv23', ('RC4-SHA', '!aNULL', '!eNULL')),}
+                       'strip': StripPlugin('SSLv23', 'RC4-SHA:!aNULL:!eNULL'),}
     hosts_filter = None
 
     def __init__(self, *args, **kwargs):
@@ -793,7 +793,7 @@ class PHPProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
     handler_filters = [PHPFetchFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
-                       'strip': StripPlugin('SSLv23', ('RC4-SHA', '!aNULL', '!eNULL')),}
+                       'strip': StripPlugin('SSLv23', 'RC4-SHA:!aNULL:!eNULL'),}
 
     def __init__(self, *args, **kwargs):
         SimpleProxyHandler.__init__(self, *args, **kwargs)

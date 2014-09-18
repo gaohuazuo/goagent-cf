@@ -929,9 +929,9 @@ class MockFetchPlugin(BaseFetchPlugin):
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
 
-    def __init__(self, ssl_version='TLSv1', cipher_suites=('ALL', '!aNULL', '!eNULL'), cache_size=128):
+    def __init__(self, ssl_version='TLSv1', ciphers='ALL:!aNULL:!eNULL', cache_size=128):
         self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
-        self.cipher_suites = cipher_suites
+        self.ciphers = ciphers
         self.ssl_context_cache = LRUCache(cache_size*2)
 
     def get_ssl_context_by_hostname(self, hostname):
@@ -947,8 +947,8 @@ class StripPlugin(BaseFetchPlugin):
                 pem = fp.read()
                 context.use_certificate(OpenSSL.crypto.load_certificate(OpenSSL.SSL.FILETYPE_PEM, pem))
                 context.use_privatekey(OpenSSL.crypto.load_privatekey(OpenSSL.SSL.FILETYPE_PEM, pem))
-            if self.cipher_suites:
-                context.set_cipher_list(':'.join(self.cipher_suites))
+            if self.ciphers:
+                context.set_cipher_list(self.ciphers)
             self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile] = context
             return context
 
@@ -960,7 +960,7 @@ class StripPlugin(BaseFetchPlugin):
         if do_ssl_handshake:
             try:
                 certfile = CertUtil.get_cert(handler.host)
-                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True)
+                ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True, ciphers=self.ciphers)
                 # ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
                 # ssl_sock.set_accept_state()
                 # ssl_sock.do_handshake()
@@ -1418,7 +1418,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     handler_filters = [SimpleProxyHandlerFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
-                       'strip': StripPlugin('SSLv23', ('RC4-SHA', '!aNULL', '!eNULL')),}
+                       'strip': StripPlugin('SSLv23', 'RC4-SHA:!aNULL:!eNULL'),}
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
