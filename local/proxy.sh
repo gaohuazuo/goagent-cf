@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:${PATH}
 
 start() {
     echo -n "Starting ${PACKAGE_DESC}: "
-    nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep -v "INFO -" | /usr/bin/logger -t ${PACKAGE_NAME} &
+    nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" | /usr/bin/logger -t ${PACKAGE_NAME} &
     echo "${PACKAGE_NAME}."
 }
 
