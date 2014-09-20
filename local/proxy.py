@@ -411,8 +411,12 @@ class GAEFetchPlugin(BaseFetchPlugin):
         response = None
         for i in xrange(self.max_retry):
             try:
-                response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
-                if response.app_status < 400:
+                with gevent.Timeout(self.connect_timeout, False):
+                    response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
+                if not response:
+                    logging.warning('URLFETCH "%s %s" timeout, continue', method, url)
+                    continue
+                elif response.app_status < 400:
                     break
                 else:
                     if response.app_status == 503:
