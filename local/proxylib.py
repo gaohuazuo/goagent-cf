@@ -1911,14 +1911,16 @@ class MultipleConnectionMixin(object):
             for addr in addrs:
                 thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
                 #thread.start_new_thread(create_connection, (addr, timeout, queobj))
+            errors = []
             for i in range(len(addrs)):
                 sock = queobj.get()
                 if not isinstance(sock, Exception):
                     thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj, sock.tcp_time, sock.ssl_time))
                     return sock
-                elif i == 0:
-                    # only output first error
-                    logging.warning('create_ssl_connection to %r with %s return %r, try again.', hostname, addrs, sock)
+                else:
+                    errors.append(sock)
+                    if i == len(addrs) - 1:
+                        logging.warning('create_ssl_connection to %r with %s return %r, try again.', hostname, addrs, errors)
         if isinstance(sock, Exception):
             raise sock
 
