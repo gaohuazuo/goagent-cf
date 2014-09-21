@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.23'
+__version__ = '3.2.0'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
-__content_type__ = 'image/gif'
-__mirror_userjs__ = ()  # __mirror_userjs__ = '//www.example.com/user.js'
 
 import os
 import re
@@ -15,6 +13,7 @@ import zlib
 import base64
 import logging
 import urlparse
+import httplib
 import io
 import string
 
@@ -25,7 +24,7 @@ from google.appengine.runtime import apiproxy_errors
 URLFETCH_MAX = 2
 URLFETCH_MAXSIZE = 4*1024*1024
 URLFETCH_DEFLATE_MAXSIZE = 4*1024*1024
-URLFETCH_TIMEOUT = 60
+URLFETCH_TIMEOUT = 30
 
 def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
@@ -96,21 +95,24 @@ def deflate(data):
     return zlib.compress(data)[2:-4]
 
 
+def format_response(status, headers, content):
+    if not headers.get('Content-Length') and content:
+        headers['Content-Length'] = str(len(content))
+    return 'HTTP/1.1 %d %s\r\n%s\r\n\r\n%s' % (status, httplib.responses.get(status, ''), '\r\n'.join('%s: %s' % (k.title(), v) for k, v in headers.items()), content)
+
 def application(environ, start_response):
     ps_headers = dict((x, environ[x]) for x in environ if x.startswith('HTTP_X_GOA_PS'))
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
+    start_response('200 OK', [('Content-Type', 'image/gif')])
 
     if environ['REQUEST_METHOD'] == 'GET' and not ps_headers:
         timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-        text = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
-        start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
-        yield text.encode('utf8')
+        yield format_response(200, {'Content-Type': 'text/plain; charset=utf-8'}, 'GoAgent Python Server %s works, deployed at %s\n' % (__version__, ctime))
         raise StopIteration
 
     if 'rc4' in options and not __password__:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
-        yield message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again')
+        yield format_response(400, {'Content-Type': 'text/html; charset=utf-8'}, message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again'))
         raise StopIteration
 
     try:
@@ -130,8 +132,7 @@ def application(environ, start_response):
         url = headers.pop('G-Url')
     except (zlib.error, KeyError, ValueError):
         import traceback
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
-        yield message_html('500 Internal Server Error', 'Bad Request (metadata) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc())
+        yield format_response(500, {'Content-Type': 'text/html; charset=utf-8'}, message_html('500 Internal Server Error', 'Bad Request (metadata) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc()))
         raise StopIteration
 
     kwargs = {}
@@ -144,38 +145,31 @@ def application(environ, start_response):
             del headers['Content-Encoding']
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
-    #logging.info('request headers=%s', headers)
 
     if __password__ and __password__ != kwargs.get('password', ''):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
-        yield message_html('403 Wrong password', 'Wrong password(%r)' % kwargs.get('password', ''), 'GoAgent proxy.ini password is wrong!')
+        yield format_response(403, {'Content-Type': 'text/html; charset=utf-8'}, message_html('403 Wrong password', 'Wrong password(%r)' % kwargs.get('password', ''), 'GoAgent proxy.ini password is wrong!'))
         raise StopIteration
 
     netloc = urlparse.urlparse(url).netloc
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '403')])
-        yield message_html('403 Hosts Deny', 'Hosts Deny(%r)' % netloc, detail='url=%r' % url)
+        yield format_response(403, {'Content-Type': 'text/html; charset=utf-8'}, message_html('403 Hosts Deny', 'Hosts Deny(%r)' % netloc, detail='url=%r' % url))
         raise StopIteration
 
     if len(url) > MAX_URL_LENGTH:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
-        yield message_html('400 Bad Request', 'length of URL too long(greater than %r)' % MAX_URL_LENGTH, detail='url=%r' % url)
+        yield format_response(400, {'Content-Type': 'text/html; charset=utf-8'}, message_html('400 Bad Request', 'length of URL too long(greater than %r)' % MAX_URL_LENGTH, detail='url=%r' % url))
         raise StopIteration
 
     if netloc.startswith(('127.0.0.', '::1', 'localhost')):
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '400')])
-        html = ''.join('<a href="https://%s/">%s</a><br/>' % (x, x) for x in ('google.com', 'mail.google.com'))
-        yield message_html('GoAgent %s is Running' % __version__, 'Now you can visit some websites', html)
+        yield format_response(400, {'Content-Type': 'text/html; charset=utf-8'}, message_html('GoAgent %s is Running' % __version__, 'Now you can visit some websites', ''.join('<a href="https://%s/">%s</a><br/>' % (x, x) for x in ('google.com', 'mail.google.com'))))
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '405')])
-        yield message_html('405 Method Not Allowed', 'Method Not Allowed: %r' % method, detail='Method Not Allowed URL=%r' % url)
+        yield format_response(405, {'Content-Type': 'text/html; charset=utf-8'}, message_html('405 Method Not Allowed', 'Method Not Allowed: %r' % method, detail='Method Not Allowed URL=%r' % url))
         raise StopIteration
 
-    deadline = URLFETCH_TIMEOUT
+    timeout = int(kwargs.get('timeout', URLFETCH_TIMEOUT))
     validate_certificate = bool(int(kwargs.get('validate', 0)))
     maxsize = int(kwargs.get('maxsize', 0))
     # https://www.freebsdchina.org/forum/viewtopic.php?t=54269
@@ -183,24 +177,24 @@ def application(environ, start_response):
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', URLFETCH_MAX))):
         try:
-            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=validate_certificate)
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=timeout, validate_certificate=validate_certificate)
             break
         except apiproxy_errors.OverQuotaError as e:
             time.sleep(5)
         except urlfetch.DeadlineExceededError as e:
-            errors.append('%r, deadline=%s' % (e, deadline))
-            logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
+            errors.append('%r, timeout=%s' % (e, timeout))
+            logging.error('DeadlineExceededError(timeout=%s, url=%r)', timeout, url)
             time.sleep(1)
-            deadline = URLFETCH_TIMEOUT * 2
+            timeout *= 2
         except urlfetch.DownloadError as e:
-            errors.append('%r, deadline=%s' % (e, deadline))
-            logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
+            errors.append('%r, timeout=%s' % (e, timeout))
+            logging.error('DownloadError(timeout=%s, url=%r)', timeout, url)
             time.sleep(1)
-            deadline = URLFETCH_TIMEOUT * 2
+            timeout *= 2
         except urlfetch.ResponseTooLargeError as e:
-            errors.append('%r, deadline=%s' % (e, deadline))
+            errors.append('%r, timeout=%s' % (e, timeout))
             response = e.response
-            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
+            logging.error('ResponseTooLargeError(timeout=%s, url=%r) response(%r)', timeout, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
             if m is None:
                 headers['Range'] = 'bytes=0-%d' % (maxsize or URLFETCH_MAXSIZE)
@@ -209,21 +203,20 @@ def application(environ, start_response):
                 headers.pop('range', '')
                 start = int(m.group(1))
                 headers['Range'] = 'bytes=%s-%d' % (start, start+(maxsize or URLFETCH_MAXSIZE))
-            deadline = URLFETCH_TIMEOUT * 2
+            timeout *= 2
         except urlfetch.SSLCertificateError as e:
             errors.append('%r, should validate=0 ?' % e)
-            logging.error('%r, deadline=%s', e, deadline)
+            logging.error('%r, timeout=%s', e, timeout)
         except Exception as e:
             errors.append(str(e))
             if i == 0 and method == 'GET':
-                deadline = URLFETCH_TIMEOUT * 2
+                timeout *= 2
     else:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8'), ('Status', '502')])
         error_string = '<br />\n'.join(errors)
         if not error_string:
             logurl = 'https://appengine.google.com/logs?&app_id=%s' % os.environ['APPLICATION_ID']
             error_string = 'Internal Server Error. <p/>try <a href="javascript:window.location.reload(true);">refresh</a> or goto <a href="%s" target="_blank">appengine.google.com</a> for details' % logurl
-        yield message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method, error_string)
+        yield format_response(502, {'Content-Type': 'text/html; charset=utf-8'}, message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method, error_string))
         raise StopIteration
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
@@ -250,16 +243,13 @@ def application(environ, start_response):
             response_headers['Content-Encoding'] = 'deflate'
             data = deflate(data)
     response_headers['Content-Length'] = str(len(data))
-    response_headers_data = deflate('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))
-    if 'rc4' not in options or content_type.startswith(('audio/', 'image/', 'video/')):
-        start_response('200 OK', [('Content-Type', __content_type__)])
-        yield struct.pack('!hh', status_code, len(response_headers_data))+response_headers_data
+    if 'rc4' not in options:
+        yield format_response(status_code, response_headers, '')
         yield data
     else:
-        start_response('200 OK', [('Content-Type', __content_type__), ('X-GOA-Options', 'rc4')])
-        yield struct.pack('!hh', status_code, len(response_headers_data))
-        yield RC4Cipher(__password__).encrypt(response_headers_data)
-        yield RC4Cipher(__password__).encrypt(data)
+        cipher = RC4Cipher(__password__)
+        yield cipher.encrypt(format_response(status_code, response_headers, ''))
+        yield cipher.encrypt(data)
 
 
 def legacy_application(environ, start_response):
@@ -416,11 +406,11 @@ def legacy_application(environ, start_response):
     response_headers['Content-Length'] = str(len(data))
     response_headers_data = deflate('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))
     if 'rc4' not in options or content_type.startswith(('audio/', 'image/', 'video/')):
-        start_response('200 OK', [('Content-Type', __content_type__)])
+        start_response('200 OK', [('Content-Type', 'image/gif')])
         yield struct.pack('!hh', status_code, len(response_headers_data))+response_headers_data
         yield data
     else:
-        start_response('200 OK', [('Content-Type', __content_type__), ('X-GOA-Options', 'rc4')])
+        start_response('200 OK', [('Content-Type', 'image/gif'), ('X-GOA-Options', 'rc4')])
         yield struct.pack('!hh', status_code, len(response_headers_data))
         yield RC4Cipher(__password__).encrypt(response_headers_data)
         yield RC4Cipher(__password__).encrypt(data)
