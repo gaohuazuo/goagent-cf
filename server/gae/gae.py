@@ -96,9 +96,12 @@ def deflate(data):
 
 
 def format_response(status, headers, content):
-    if not headers.get('Content-Length') and content:
+    if content:
+        headers.pop('content-length', None)
         headers['Content-Length'] = str(len(content))
-    return 'HTTP/1.1 %d %s\r\n%s\r\n\r\n%s' % (status, httplib.responses.get(status, ''), '\r\n'.join('%s: %s' % (k.title(), v) for k, v in headers.items()), content)
+    data = 'HTTP/1.1 %d %s\r\n%s\r\n\r\n%s' % (status, httplib.responses.get(status, 'Unknown'), '\r\n'.join('%s: %s' % (k.title(), v) for k, v in headers.items()), content)
+    data = deflate(data)
+    return struct.pack('!h', len(data)) + data
 
 def application(environ, start_response):
     ps_headers = dict((x, environ[x]) for x in environ if x.startswith('HTTP_X_GOA_PS'))
