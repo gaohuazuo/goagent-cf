@@ -2011,8 +2011,17 @@ class MultipleConnectionMixin(object):
             response = httplib.HTTPResponse(sock)
             response.fp.close()
             response.fp = sock.makefile('rb')
-        sock.settimeout(self.connect_timeout)
-        response.begin()
+        if gevent:
+            try:
+                with gevent.Timeout(self.connect_timeout):
+                    response.begin()
+            except gevent.Timeout:
+                raise socket.timeout('timed out')
+        else:
+            orig_timeout = sock.gettimeout()
+            sock.settimeout(self.connect_timeout)
+            response.begin()
+            sock.settimeout(orig_timeout)
         if ((scheme == 'https' and self.ssl_connection_cachesock and self.ssl_connection_keepalive) or (scheme == 'http' and self.tcp_connection_cachesock and self.tcp_connection_keepalive)) and cache_key:
             response.cache_key = cache_key
             response.cache_sock = response.fp._sock
