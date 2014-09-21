@@ -2016,6 +2016,7 @@ class MultipleConnectionMixin(object):
                 with gevent.Timeout(self.connect_timeout):
                     response.begin()
             except gevent.Timeout:
+                response.close()
                 raise socket.timeout('timed out')
         else:
             orig_timeout = sock.gettimeout()
