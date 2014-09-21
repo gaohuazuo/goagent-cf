@@ -45,7 +45,7 @@
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
 
-__version__ = '3.1.25'
+__version__ = '3.2.0'
 
 import os
 import sys
@@ -526,30 +526,28 @@ class GAEFetchPlugin(BaseFetchPlugin):
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
         response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
-        response.app_options = response.getheader('X-GOA-Options', '')
-        if response.status == 200 and response.msg.get('status'):
-            response.app_status = response.status = int(response.msg.get('status'))
         if response.app_status != 200:
             return response
-        data = response.read(4)
-        if len(data) < 4:
+        if 'rc4' in request_headers.get('X-GOA-Options', ''):
+            response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
+        data = response.read(2)
+        if len(data) < 2:
             response.status = 502
             response.fp = io.BytesIO(b'connection aborted. too short leadbyte data=' + data)
             response.read = response.fp.read
             return response
-        response.status, headers_length = struct.unpack('!hh', data)
+        headers_length, = struct.unpack('!h', data)
         data = response.read(headers_length)
         if len(data) < headers_length:
             response.status = 502
             response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
             response.read = response.fp.read
             return response
-        if 'rc4' not in response.app_options:
-            response.msg = httplib.HTTPMessage(io.BytesIO(inflate(data)))
-        else:
-            response.msg = httplib.HTTPMessage(io.BytesIO(inflate(rc4crypt(data, kwargs.get('password')))))
-            if kwargs.get('password') and response.fp:
-                response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
+        raw_response_line, headers_data = inflate(data).split('\r\n', 1)
+        _, response.status, response.reason = raw_response_line.split(None, 2)
+        response.status = int(response.status)
+        response.reason = response.reason.strip()
+        response.msg = httplib.HTTPMessage(io.BytesIO(headers_data))
         return response
 
 
