@@ -424,7 +424,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                         self.appids.append(self.appids.pop(0))
                         logging.info('URLFETCH return %d, trying next appid=%r', response.app_status, self.appids[0])
                     response.close()
-            except StandardError as e:
+            except Exception as e:
                 errors.append(e)
                 logging.info('GAE "%s %s" appid=%r %r, retry...', handler.command, handler.path, self.appids[0], e)
         if len(errors) == self.max_retry:
@@ -520,7 +520,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
+        response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key, headfirst=True)
         response.app_status = response.status
         if response.app_status != 200:
             return response
