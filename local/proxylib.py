@@ -1766,7 +1766,7 @@ class MultipleConnectionMixin(object):
                 ssl_sock.settimeout(timeout)
                 # do head first check
                 if headfirst:
-                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\n\r\n')
+                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\nHost: %s\r\n\r\n' % hostname)
                     response = httplib.HTTPResponse(ssl_sock, buffering=True)
                     try:
                         if gevent:
@@ -1848,7 +1848,7 @@ class MultipleConnectionMixin(object):
                         raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (hostname, commonname))
                 # do head first check
                 if headfirst:
-                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\n\r\n')
+                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\nHost: %s\r\n\r\n' % hostname)
                     response = httplib.HTTPResponse(ssl_sock, buffering=True)
                     try:
                         if gevent:
