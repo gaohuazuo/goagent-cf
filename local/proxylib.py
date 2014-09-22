@@ -1775,6 +1775,7 @@ class MultipleConnectionMixin(object):
                         else:
                             response.begin()
                     except gevent.Timeout:
+                        ssl_sock.close()
                         raise socket.timeout('timed out')
                     finally:
                         response.close()
@@ -1856,6 +1857,7 @@ class MultipleConnectionMixin(object):
                         else:
                             response.begin()
                     except gevent.Timeout:
+                        ssl_sock.close()
                         raise socket.timeout('timed out')
                     finally:
                         response.close()
@@ -2040,7 +2042,7 @@ class MultipleConnectionMixin(object):
             response = httplib.HTTPResponse(sock)
             response.fp.close()
             response.fp = sock.makefile('rb')
-        if gevent:
+        if gevent and not headfirst:
             try:
                 with gevent.Timeout(self.connect_timeout):
                     response.begin()
