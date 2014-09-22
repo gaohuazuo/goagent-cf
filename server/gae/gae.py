@@ -104,24 +104,27 @@ def format_response(status, headers, content):
     return struct.pack('!h', len(data)) + data
 
 def application(environ, start_response):
-    ps_headers = dict((x, environ[x]) for x in environ if x.startswith('HTTP_X_GOA_PS'))
-    options = environ.get('HTTP_X_GOA_OPTIONS', '')
-    start_response('200 OK', [('Content-Type', 'image/gif')])
-
-    if environ['REQUEST_METHOD'] == 'GET' and not ps_headers:
+    if environ['REQUEST_METHOD'] == 'GET' and 'HTTP_X_GOA_PS1' not in environ:
         timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-        yield format_response(200, {'Content-Type': 'text/plain; charset=utf-8'}, 'GoAgent Python Server %s works, deployed at %s\n' % (__version__, ctime))
+        start_response('200 OK', [('Content-Type', 'text/plain')])
+        yield 'GoAgent Python Server %s works, deployed at %s\n' % (__version__, ctime)
         raise StopIteration
 
+    start_response('200 OK', [('Content-Type', 'image/gif')])
+
+    if environ['REQUEST_METHOD'] == 'HEAD':
+        raise StopIteration
+
+    options = environ.get('HTTP_X_GOA_OPTIONS', '')
     if 'rc4' in options and not __password__:
         yield format_response(400, {'Content-Type': 'text/html; charset=utf-8'}, message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again'))
         raise StopIteration
 
     try:
-        if ps_headers:
-            metadata = inflate(base64.b64decode(ps_headers['HTTP_X_GOA_PS1']))
-            payload = inflate(base64.b64decode(ps_headers['HTTP_X_GOA_PS2'])) if 'HTTP_X_GOA_PS2' in ps_headers else ''
+        if 'HTTP_X_GOA_PS1' in environ:
+            metadata = inflate(base64.b64decode(environ['HTTP_X_GOA_PS1']))
+            payload = inflate(base64.b64decode(environ['HTTP_X_GOA_PS2'])) if 'HTTP_X_GOA_PS2' in environ else ''
         else:
             wsgi_input = environ['wsgi.input']
             input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH', '0')))
