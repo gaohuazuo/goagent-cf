@@ -1712,6 +1712,7 @@ class MultipleConnectionMixin(object):
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         cache_key = kwargs.get('cache_key', '') if self.ssl_connection_cachesock else ''
         validate = kwargs.get('validate')
+        headfirst = kwargs.get('headfirst')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             ssl_sock = None
@@ -1763,6 +1764,20 @@ class MultipleConnectionMixin(object):
                         raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (hostname, orgname))
                 # set timeout
                 ssl_sock.settimeout(timeout)
+                # do head first check
+                if headfirst:
+                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\n\r\n')
+                    response = httplib.HTTPResponse(ssl_sock, buffering=True)
+                    try:
+                        if gevent:
+                            with gevent.Timeout(timeout):
+                                response.begin()
+                        else:
+                            response.begin()
+                    except gevent.Timeout:
+                        raise socket.timeout('timed out')
+                    finally:
+                        response.close()
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except (socket.error, ssl.SSLError, OSError) as e:
@@ -1830,6 +1845,20 @@ class MultipleConnectionMixin(object):
                     commonname = next((v for k, v in cert.get_subject().get_components() if k == 'CN'))
                     if '.google' not in commonname and not commonname.endswith('.appspot.com'):
                         raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (hostname, commonname))
+                # do head first check
+                if headfirst:
+                    ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\n\r\n')
+                    response = httplib.HTTPResponse(ssl_sock, buffering=True)
+                    try:
+                        if gevent:
+                            with gevent.Timeout(timeout):
+                                response.begin()
+                        else:
+                            response.begin()
+                    except gevent.Timeout:
+                        raise socket.timeout('timed out')
+                    finally:
+                        response.close()
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except (socket.error, OpenSSL.SSL.Error, OSError) as e:
@@ -1924,7 +1953,7 @@ class MultipleConnectionMixin(object):
         if isinstance(sock, Exception):
             raise sock
 
-    def create_http_request(self, method, url, headers, body, timeout, max_retry=2, bufsize=8192, crlf=None, validate=None, cache_key=None, **kwargs):
+    def create_http_request(self, method, url, headers, body, timeout, max_retry=2, bufsize=8192, crlf=None, validate=None, cache_key=None, headfirst=False, **kwargs):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1943,7 +1972,7 @@ class MultipleConnectionMixin(object):
         for i in range(max_retry):
             try:
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
-                sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key)
+                sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key, headfirst=headfirst)
                 break
             except StandardError as e:
                 logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
