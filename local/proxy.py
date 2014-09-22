@@ -520,7 +520,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key, headfirst=True)
+        headfirst = bool(common.GAE_HEADFIRST)
+        response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key, headfirst=headfirst)
         response.app_status = response.status
         if response.app_status != 200:
             return response
@@ -1223,6 +1224,7 @@ class Common(object):
         self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
         self.GAE_KEEPALIVE = self.CONFIG.getint('gae', 'keepalive')
         self.GAE_CACHESOCK = self.CONFIG.getint('gae', 'cachesock')
+        self.GAE_HEADFIRST = self.CONFIG.getint('gae', 'headfirst')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_TRANSPORT = self.CONFIG.getint('gae', 'transport') if self.CONFIG.has_option('gae', 'transport') else 0
