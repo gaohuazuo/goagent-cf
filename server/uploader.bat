@@ -11,7 +11,9 @@ try:
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:8087'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:8087'
 except socket.error:
-    pass
+    sys.stdout.write('''请启动 goagent 客户端然后再上传。'''.decode('gbk').encode(sys.getfilesystemencoding(), 'replace'))
+    raw_input()
+    sys.exit(-1)
 
 sys.path += ['google_appengine.zip', 'google_appengine.zip/google/appengine/_internal']
 
@@ -62,7 +64,7 @@ def upload(dirname, appid):
     if sys.modules.has_key('google'):
         del sys.modules['google']
     google.appengine.tools.appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
-    google.appengine.tools.appcfg.main(['appcfg', 'rollback', dirname])
+    #google.appengine.tools.appcfg.main(['appcfg', 'rollback', dirname])
     google.appengine.tools.appcfg.main(['appcfg', 'update', dirname])
 
 
@@ -89,7 +91,5 @@ if __name__ == '__main__':
 注意：appid 请勿包含 android/ios 字样，否则可能被某些网站识别成移动设备。
         '''.decode('gbk').strip().encode(sys.getfilesystemencoding(), 'replace')+'\n')
     main()
-    sys.stdout.write(u'''
-上传成功，请不要忘记编辑proxy.ini把你的appid填进去，谢谢。按回车键退出程序。'''
-        .decode('gbk').encode(sys.getfilesystemencoding(), 'replace'))
+    sys.stdout.write('''上传成功，请不要忘记编辑proxy.ini把你的appid填进去，谢谢。按回车键退出程序。'''.decode('gbk').encode(sys.getfilesystemencoding(), 'replace'))
     raw_input()
