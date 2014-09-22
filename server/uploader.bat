@@ -23,9 +23,6 @@ def fancy_urllib_create_fancy_connection(*args, **kwargs):
 
 fancy_urllib.create_fancy_connection = fancy_urllib_create_fancy_connection
 
-import google.appengine.tools.appengine_rpc
-import google.appengine.tools.appcfg
-
 _realgetpass = getpass.getpass
 def getpass_getpass(prompt='Password:', stream=None):
     try:
@@ -52,6 +49,8 @@ getpass.getpass = getpass_getpass
 
 
 def upload(dirname, appid):
+    import google.appengine.tools.appengine_rpc
+    import google.appengine.tools.appcfg
     assert isinstance(dirname, basestring) and isinstance(appid, basestring)
     filename = os.path.join(dirname, 'app.yaml')
     assert os.path.isfile(filename), u'%s not exists!' % filename
