@@ -16,7 +16,7 @@ try:
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:8087'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:8087'
 except socket.error:
-    println(u'建议启动 goagent 客户端或者 VPN 然后再上传，按回车键继续')
+    println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果仍然要上传的话，请按回车键继续。')
     raw_input()
 
 sys.path += ['google_appengine.zip', 'google_appengine.zip/lib']
@@ -75,10 +75,10 @@ def upload(dirname, appid):
 def main():
     appids = raw_input('APPID:')
     if not re.match(r'[0-9a-zA-Z\-|]+', appids):
-        sys.stderr.write('appid Wrong Format, please login http://appengine.google.com to view the correct appid!\n')
+        println(u'错误的 appid 格式，请登录 http://appengine.google.com 查看您的 appid!')
         sys.exit(-1)
-    if any(x in appids.lower() for x in ('ios', 'android')):
-        sys.stderr.write('appid cannot contians ios/android\n')
+    if any(x in appids.lower() for x in ('ios', 'android', 'mobile')):
+        println(u'appid 不能包含 ios/android/mobile 等字样。')
         sys.exit(-1)
     for appid in appids.split('|'):
         upload('gae', appid)
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     println(u'''\
 ===============================================================
  GoAgent服务端部署程序, 开始上传 gae 应用文件夹
- Linux/Mac 用户, 请使用 python -x uploader.bat 来上传应用
+ Linux/Mac 用户, 请使用 python uploader.py 来上传应用
 ===============================================================
 
 请输入您的appid, 多个appid请用|号隔开
