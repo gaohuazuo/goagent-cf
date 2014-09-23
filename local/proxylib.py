@@ -1007,7 +1007,7 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 4
+    connect_timeout = 8
     max_retry = 3
 
     def handle(self, handler, **kwargs):
@@ -2044,7 +2044,7 @@ class MultipleConnectionMixin(object):
             response.fp = sock.makefile('rb')
         if gevent and not headfirst:
             try:
-                with gevent.Timeout(self.connect_timeout):
+                with gevent.Timeout(timeout):
                     response.begin()
             except gevent.Timeout:
                 response.close()
