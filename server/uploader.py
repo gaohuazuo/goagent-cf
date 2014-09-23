@@ -13,21 +13,16 @@ def println(s, file=sys.stderr):
 
 try:
     socket.create_connection(('127.0.0.1', 8087), timeout=1).close()
-    os.environ['HTTP_PROXY'] = 'http://127.0.0.1:8087'
-    os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:8087'
+    os.environ['HTTPS_PROXY'] = '127.0.0.1:8087'
 except socket.error:
     println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果您的 VPN 已经打开的话，请按回车键继续。')
     raw_input()
 
 sys.path += ['google_appengine.zip', 'google_appengine.zip/lib']
 
-import httplib
+import urllib2
 import fancy_urllib
-
-def fancy_urllib_create_fancy_connection(*args, **kwargs):
-    return httplib.HTTPSConnection
-
-fancy_urllib.create_fancy_connection = fancy_urllib_create_fancy_connection
+fancy_urllib.FancyHTTPSHandler = urllib2.HTTPSHandler
 
 _realgetpass = getpass.getpass
 def getpass_getpass(prompt='Password:', stream=None):
