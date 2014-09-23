@@ -16,7 +16,7 @@ try:
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:8087'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:8087'
 except socket.error:
-    println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果仍然要上传的话，请按回车键继续。')
+    println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果您的 VPN 已经打开的话，请按回车键继续。')
     raw_input()
 
 sys.path += ['google_appengine.zip', 'google_appengine.zip/lib']
@@ -55,8 +55,7 @@ getpass.getpass = getpass_getpass
 
 
 def upload(dirname, appid):
-    import google.appengine.tools.appengine_rpc
-    import google.appengine.tools.appcfg
+    from google.appengine.tools import appengine_rpc, appcfg
     assert isinstance(dirname, basestring) and isinstance(appid, basestring)
     filename = os.path.join(dirname, 'app.yaml')
     assert os.path.isfile(filename), u'%s not exists!' % filename
@@ -65,11 +64,9 @@ def upload(dirname, appid):
     yaml = re.sub(r'application:\s*\S+', 'application: '+appid, yaml)
     with open(filename, 'wb') as fp:
         fp.write(yaml)
-    if sys.modules.has_key('google'):
-        del sys.modules['google']
-    google.appengine.tools.appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
-    google.appengine.tools.appcfg.main(['appcfg', 'rollback', dirname])
-    google.appengine.tools.appcfg.main(['appcfg', 'update', dirname])
+    appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
+    appcfg.main(['appcfg', 'rollback', dirname])
+    appcfg.main(['appcfg', 'update', dirname])
 
 
 def main():
