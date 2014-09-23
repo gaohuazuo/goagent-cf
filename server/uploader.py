@@ -89,6 +89,7 @@ if __name__ == '__main__':
 ===============================================================
 
 请输入您的appid, 多个appid请用|号隔开
+如果您使用 goagent 客户端上传，请确保 proxy.ini 包含 appengine.google.com = withgae 规则
 注意：appid 请勿包含 android/ios 字样，否则可能被某些网站识别成移动设备。
         '''.strip())
     main()
