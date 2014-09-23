@@ -1007,7 +1007,8 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 8
+    connect_timeout = 4
+    read_timeout = 16
     max_retry = 3
 
     def handle(self, handler, **kwargs):
@@ -1026,7 +1027,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
         body = handler.body
         response = None
         try:
-            response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, **kwargs)
+            response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, read_timeout=self.read_timeout, **kwargs)
             logging.info('%s "DIRECT %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
             handler.send_response(response.status)
@@ -2042,9 +2043,9 @@ class MultipleConnectionMixin(object):
             response = httplib.HTTPResponse(sock)
             response.fp.close()
             response.fp = sock.makefile('rb')
-        if gevent and not headfirst:
+        if gevent and not headfirst and kwargs.get('read_timeout'):
             try:
-                with gevent.Timeout(timeout):
+                with gevent.Timeout(int(kwargs.get('read_timeout'))):
                     response.begin()
             except gevent.Timeout:
                 response.close()
