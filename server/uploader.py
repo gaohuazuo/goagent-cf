@@ -20,6 +20,9 @@ except socket.error:
 
 sys.path += ['google_appengine.zip', 'google_appengine.zip/lib']
 
+import mimetypes
+mimetypes._winreg = None
+
 import urllib2
 import fancy_urllib
 fancy_urllib.FancyHTTPSHandler = urllib2.HTTPSHandler
