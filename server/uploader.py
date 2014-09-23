@@ -49,8 +49,10 @@ def getpass_getpass(prompt='Password:', stream=None):
 getpass.getpass = getpass_getpass
 
 
+from google.appengine.tools import appengine_rpc, appcfg
+appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
+
 def upload(dirname, appid):
-    from google.appengine.tools import appengine_rpc, appcfg
     assert isinstance(dirname, basestring) and isinstance(appid, basestring)
     filename = os.path.join(dirname, 'app.yaml')
     assert os.path.isfile(filename), u'%s not exists!' % filename
@@ -59,7 +61,6 @@ def upload(dirname, appid):
     yaml = re.sub(r'application:\s*\S+', 'application: '+appid, yaml)
     with open(filename, 'wb') as fp:
         fp.write(yaml)
-    appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
     appcfg.main(['appcfg', 'rollback', dirname])
     appcfg.main(['appcfg', 'update', dirname])
 
