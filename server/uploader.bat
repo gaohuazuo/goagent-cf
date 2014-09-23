@@ -64,7 +64,7 @@ def upload(dirname, appid):
     if sys.modules.has_key('google'):
         del sys.modules['google']
     google.appengine.tools.appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
-    #google.appengine.tools.appcfg.main(['appcfg', 'rollback', dirname])
+    google.appengine.tools.appcfg.main(['appcfg', 'rollback', dirname])
     google.appengine.tools.appcfg.main(['appcfg', 'update', dirname])
 
 
