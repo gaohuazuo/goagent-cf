@@ -109,6 +109,8 @@ def application(environ, start_response):
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
         start_response('200 OK', [('Content-Type', 'text/plain')])
         yield 'GoAgent Python Server %s works, deployed at %s\n' % (__version__, ctime)
+        if len(__password__) > 2:
+            yield 'Password: %s%s%s' % (__password__[0], '*'*(len(__password__)-2), __password__[-1])
         raise StopIteration
 
     start_response('200 OK', [('Content-Type', 'image/gif')])
