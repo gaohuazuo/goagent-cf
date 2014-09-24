@@ -1757,12 +1757,12 @@ class MultipleConnectionMixin(object):
                 # add to good ipaddrs dict
                 if ipaddr not in self.ssl_connection_good_ipaddrs:
                     self.ssl_connection_good_ipaddrs[ipaddr] = handshaked_time
-                # verify SSL certificate.
-                if validate and hostname.endswith('.appspot.com'):
-                    cert = ssl_sock.getpeercert()
-                    orgname = next((v for ((k, v),) in cert['subject'] if k == 'organizationName'))
-                    if not orgname.lower().startswith('google '):
-                        raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (hostname, orgname))
+                # verify SSL certificate issuer.
+                if validate and (hostname.endswith('.appspot.com') or '.google' in hostname):
+                    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, ssl_sock.getpeercert(True))
+                    issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
+                    if not issuer_commonname.startswith('Google'):
+                        raise socket.error('%r certficate is issued by %r, not Google' % (hostname, issuer_commonname))
                 # set timeout
                 ssl_sock.settimeout(timeout)
                 # do head first check
@@ -1841,12 +1841,12 @@ class MultipleConnectionMixin(object):
                 # add to good ipaddrs dict
                 if ipaddr not in self.ssl_connection_good_ipaddrs:
                     self.ssl_connection_good_ipaddrs[ipaddr] = handshaked_time
-                # verify SSL certificate.
+                # verify SSL certificate issuer.
                 if validate and (hostname.endswith('.appspot.com') or '.google' in hostname):
                     cert = ssl_sock.get_peer_certificate()
-                    commonname = next((v for k, v in cert.get_subject().get_components() if k == 'CN'))
-                    if '.google' not in commonname and not commonname.endswith('.appspot.com'):
-                        raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (hostname, commonname))
+                    issuer_commonname = next((v for k, v in cert.get_issuer().get_components() if k == 'CN'), '')
+                    if not issuer_commonname.startswith('Google'):
+                        raise socket.error('%r certficate is issued by %r, not Google' % (hostname, issuer_commonname))
                 # do head first check
                 if headfirst:
                     ssl_sock.send('HEAD /favicon.ico HTTP/1.1\r\nHost: %s\r\n\r\n' % hostname)
