@@ -18,7 +18,7 @@ except socket.error:
     println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果您的 VPN 已经打开的话，请按回车键继续。')
     raw_input()
 
-sys.path += ['google_appengine.zip', 'google_appengine.zip/lib']
+sys.path = ['google_appengine.zip', 'google_appengine.zip/lib'] + sys.path
 
 import mimetypes
 mimetypes._winreg = None
