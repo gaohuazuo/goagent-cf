@@ -146,6 +146,7 @@ class CertUtil(object):
 
     ca_vendor = 'GoAgent'
     ca_keyfile = 'CA.crt'
+    ca_footprint = 'AB:70:2C:DF:18:EB:E8:B4:38:C5:28:69:CD:4A:5D:EF:48:B4:0E:33'
     ca_certdir = 'certs'
     ca_lock = threading.Lock()
 
@@ -184,6 +185,11 @@ class CertUtil(object):
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
 
     @staticmethod
+    def get_cert_serial_number(commonname):
+        saltname = '%s|%s' % (CertUtil.ca_footprint, commonname)
+        return int(hashlib.md5(saltname.encode('utf-8')).hexdigest(), 16)
+
+    @staticmethod
     def _get_cert(commonname, sans=()):
         with open(CertUtil.ca_keyfile, 'rb') as fp:
             content = fp.read()
@@ -214,7 +220,7 @@ class CertUtil(object):
         cert = OpenSSL.crypto.X509()
         cert.set_version(2)
         try:
-            cert.set_serial_number(int(hashlib.md5(commonname.encode('utf-8')).hexdigest(), 16))
+            cert.set_serial_number(CertUtil.get_cert_serial_number(commonname))
         except OpenSSL.SSL.Error:
             cert.set_serial_number(int(time.time()*1000))
         cert.gmtime_adj_notBefore(0)
@@ -253,15 +259,6 @@ class CertUtil(object):
     @staticmethod
     def import_ca(certfile):
         commonname = os.path.splitext(os.path.basename(certfile))[0]
-        sha1digest = 'AB:70:2C:DF:18:EB:E8:B4:38:C5:28:69:CD:4A:5D:EF:48:B4:0E:33'
-        if OpenSSL:
-            try:
-                with open(certfile, 'rb') as fp:
-                    x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                    commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
-                    sha1digest = x509.digest('sha1')
-            except StandardError as e:
-                logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
             import ctypes
             with open(certfile, 'rb') as fp:
@@ -274,15 +271,20 @@ class CertUtil(object):
                 store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
                 if not store_handle:
                     return -1
-                X509_ASN_ENCODING = 0x00000001
+                CERT_FIND_SUBJECT_STR = 0x00080007
                 CERT_FIND_HASH = 0x10000
+                X509_ASN_ENCODING = 0x00000001
                 class CRYPT_HASH_BLOB(ctypes.Structure):
                     _fields_ = [('cbData', ctypes.c_ulong), ('pbData', ctypes.c_char_p)]
-                crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(sha1digest.replace(':', '')))
+                crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(CertUtil.ca_footprint.replace(':', '')))
                 crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_HASH, ctypes.byref(crypt_hash), None)
                 if crypt_handle:
                     crypt32.CertFreeCertificateContext(crypt_handle)
                     return 0
+                # while True:
+                #     crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_SUBJECT_STR, CertUtil.ca_vendor, None)
+                #     if crypt_handle:
+                #         #TODO: delete it
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
                 crypt32.CertCloseStore(store_handle, 0)
                 del crypt32
@@ -309,23 +311,20 @@ class CertUtil(object):
         capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_keyfile)
         certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_certdir)
         if not os.path.exists(capath):
-            if not OpenSSL:
-                logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
-                sys.exit(-1)
             if os.path.exists(certdir):
-                if os.path.isdir(certdir):
-                    any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
-                else:
-                    os.remove(certdir)
-                    os.mkdir(certdir)
+                any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
             CertUtil.dump_ca()
-        if glob.glob('%s/*.key' % CertUtil.ca_certdir):
-            for filename in glob.glob('%s/*.key' % CertUtil.ca_certdir):
-                try:
-                    os.remove(filename)
-                    os.remove(os.path.splitext(filename)[0]+'.crt')
-                except EnvironmentError:
-                    pass
+        with open(capath, 'rb') as fp:
+            CertUtil.ca_footprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest('sha1')
+        #Check Certs
+        certfiles = glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt')
+        if certfiles:
+            filename = random.choice(certfiles)
+            commonname = os.path.splitext(os.path.basename(filename))[0]
+            with open(filename, 'rb') as fp:
+                serial_number = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).get_serial_number()
+            if serial_number != CertUtil.get_cert_serial_number(commonname):
+                any(os.remove(x) for x in certfiles)
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
             logging.warning('install root certificate failed, Please run as administrator/root/sudo')
