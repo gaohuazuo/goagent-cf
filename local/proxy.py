@@ -412,7 +412,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         for i in xrange(self.max_retry):
             try:
                 response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
-                if response.app_status < 400:
+                if response.app_status < 500:
                     break
                 else:
                     if response.app_status == 503:
