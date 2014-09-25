@@ -18,7 +18,7 @@ except socket.error:
     println(u'警告：建议先启动 goagent 客户端或者 VPN 然后再上传，如果您的 VPN 已经打开的话，请按回车键继续。')
     raw_input()
 
-sys.path = ['google_appengine.zip', 'google_appengine.zip/lib'] + sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../google_appengine.zip')))
 
 import mimetypes
 mimetypes._winreg = None
@@ -76,6 +76,7 @@ def main():
     if any(x in appids.lower() for x in ('ios', 'android', 'mobile')):
         println(u'appid 不能包含 ios/android/mobile 等字样。')
         sys.exit(-1)
+    os.chdir(os.path.abspath(os.path.dirname(__file__)))
     try:
         os.remove('.appcfg_cookies')
     except OSError:
