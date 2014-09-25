@@ -31,24 +31,24 @@ _realgetpass = getpass.getpass
 def getpass_getpass(prompt='Password:', stream=None):
     try:
         import msvcrt
-        password = ''
-        sys.stdout.write(prompt)
-        while 1:
-            ch = msvcrt.getch()
-            if ch == '\b':
-                if password:
-                    password = password[:-1]
-                    sys.stdout.write('\b \b')
-                else:
-                    continue
-            elif ch == '\r':
-                sys.stdout.write(os.linesep)
-                return password
-            else:
-                password += ch
-                sys.stdout.write('*')
-    except Exception:
+    except ImportError:
         return _realgetpass(prompt, stream)
+    password = ''
+    sys.stdout.write(prompt)
+    while True:
+        ch = msvcrt.getch()
+        if ch == '\b':
+            if password:
+                password = password[:-1]
+                sys.stdout.write('\b \b')
+            else:
+                continue
+        elif ch == '\r':
+            sys.stdout.write(os.linesep)
+            return password
+        else:
+            password += ch
+            sys.stdout.write('*')
 getpass.getpass = getpass_getpass
 
 

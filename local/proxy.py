@@ -502,7 +502,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
-            fetchserver += '/ps/%d%s.gif' % (int(time.time()*1000), random.random())
+            fetchserver += 'ps/%d%s.gif' % (int(time.time()*1000), random.random())
             request_headers['X-GOA-PS1'] = base64.b64encode(deflate(metadata)).strip()
             if body:
                 request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
