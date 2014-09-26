@@ -187,6 +187,7 @@ from proxylib import LocalProxyServer
 from proxylib import message_html
 from proxylib import MockFetchPlugin
 from proxylib import MultipleConnectionMixin
+from proxylib import openssl_context_set_cache_mode
 from proxylib import ProxyConnectionMixin
 from proxylib import ProxyUtil
 from proxylib import RC4Cipher
@@ -743,6 +744,7 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
+        openssl_context_set_cache_mode(self.openssl_context, 'client')
         if not common.PROXY_ENABLE:
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
