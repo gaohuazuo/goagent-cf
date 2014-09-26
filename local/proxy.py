@@ -1241,7 +1241,7 @@ class Common(object):
             try:
                 sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
                 sock.connect(('2001:4860:4860::8888', 53))
-                logging.info('use ipv6 interface %s for gae', sock.getpeername()[0])
+                logging.info('use ipv6 interface %s for gae', sock.getsockname()[0])
             except Exception as e:
                 logging.info('Fail try use ipv6 %r, fallback ipv4', e)
                 self.GAE_IPV6 = 0
@@ -1325,6 +1325,11 @@ class Common(object):
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|') if v else []) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOST_MAP.items() if k == v)
         self.IPLIST_PREDEFINED = [x for x in sum(self.IPLIST_MAP.values(), []) if re.match(r'^\d+\.\d+\.\d+\.\d+$', x) or ':' in x]
+
+        if self.GAE_IPV6 and 'google_ipv6' in self.IPLIST_MAP:
+            for name in self.IPLIST_MAP.keys():
+                if name.startswith('google') and name not in ('google_ipv6', 'google_talk'):
+                    self.IPLIST_MAP[name] = self.IPLIST_MAP['google_ipv6']
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
