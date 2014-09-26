@@ -1977,7 +1977,7 @@ class MultipleConnectionMixin(object):
                 else:
                     errors.append(sock)
                     if i == len(addrs) - 1:
-                        logging.warning('create_ssl_connection to %r with %s return %s, try again.', hostname, addrs, collections.OrderedDict.fromkeys(repr(x) for x in errors).keys())
+                        logging.warning('create_ssl_connection to %r with %s return %s, try again.', hostname, addrs, collections.OrderedDict.fromkeys(str(x) for x in errors).keys())
         if isinstance(sock, Exception):
             raise sock
 
