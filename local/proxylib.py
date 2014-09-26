@@ -428,24 +428,27 @@ class SSLConnection(object):
         return ssl_context
 
 
-def openssl_context_set_cache_mode(context, mode):
+def openssl_set_session_cache_mode(context, mode):
     assert isinstance(context, OpenSSL.SSL.Context)
     try:
-        import ctypes
         SSL_CTRL_SET_SESS_CACHE_MODE = 44
         SESS_CACHE_OFF = 0x0
         SESS_CACHE_CLIENT = 0x1
         SESS_CACHE_SERVER = 0x2
         SESS_CACHE_BOTH = 0x3
         c_mode = {'off':SESS_CACHE_OFF, 'client':SESS_CACHE_CLIENT, 'server':SESS_CACHE_SERVER, 'both':SESS_CACHE_BOTH}[mode.lower()]
+        if hasattr(context, 'set_session_cache_mode'):
+            context.set_session_cache_mode(c_mode)
+            return
         if os.name == 'win32':
+            import ctypes
             c_context = ctypes.c_void_p.from_address(id(context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
             ctypes.cdll.ssleay32.SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
         else:
             #TODO
             pass
     except Exception as e:
-        logging.warning('openssl_context_set_cache_mode failed: %r', e)
+        logging.warning('openssl_set_session_cache_mode failed: %r', e)
 
 
 class ProxyUtil(object):
@@ -948,10 +951,11 @@ class MockFetchPlugin(BaseFetchPlugin):
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
 
-    def __init__(self, ssl_version='TLSv1', ciphers='ALL:!aNULL:!eNULL', cache_size=128):
+    def __init__(self, ssl_version='TLSv1', ciphers='ALL:!aNULL:!eNULL', cache_size=128, session_cache=True):
         self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
         self.ciphers = ciphers
         self.ssl_context_cache = LRUCache(cache_size*2)
+        self.ssl_session_cache = session_cache
 
     def get_ssl_context_by_hostname(self, hostname):
         try:
@@ -969,7 +973,8 @@ class StripPlugin(BaseFetchPlugin):
             if self.ciphers:
                 context.set_cipher_list(self.ciphers)
             self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile] = context
-            openssl_context_set_cache_mode(context, 'server')
+            if self.ssl_session_cache:
+                openssl_set_session_cache_mode(context, 'server')
             return context
 
     def handle(self, handler, do_ssl_handshake=True):
