@@ -431,6 +431,7 @@ class SSLConnection(object):
 def openssl_set_session_cache_mode(context, mode):
     assert isinstance(context, OpenSSL.SSL.Context)
     try:
+        import ctypes
         SSL_CTRL_SET_SESS_CACHE_MODE = 44
         SESS_CACHE_OFF = 0x0
         SESS_CACHE_CLIENT = 0x1
@@ -441,7 +442,6 @@ def openssl_set_session_cache_mode(context, mode):
             context.set_session_cache_mode(c_mode)
         elif OpenSSL.__version__ == '0.13':
             # http://bazaar.launchpad.net/~exarkun/pyopenssl/release-0.13/view/head:/OpenSSL/ssl/context.h#L27
-            import ctypes
             c_context = ctypes.c_void_p.from_address(id(context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
             if os.name == 'nt':
                 # https://github.com/openssl/openssl/blob/92c78463720f71e47c251ffa58493e32cd793e13/ssl/ssl.h#L884
