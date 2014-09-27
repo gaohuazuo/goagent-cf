@@ -446,8 +446,11 @@ def openssl_set_session_cache_mode(context, mode):
             if os.name == 'nt':
                 # https://github.com/openssl/openssl/blob/92c78463720f71e47c251ffa58493e32cd793e13/ssl/ssl.h#L884
                 ctypes.c_int.from_address(c_context.value+ctypes.sizeof(ctypes.c_voidp)*7+ctypes.sizeof(ctypes.c_ulong)).value = c_mode
-            else:
+            elif sys.platform == 'darwin':
                 ctypes.cdll.LoadLibrary('libssl.so').SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
+            else:
+                #TODO
+                pass
     except Exception as e:
         logging.warning('openssl_set_session_cache_mode failed: %r', e)
 
