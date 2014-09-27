@@ -440,13 +440,33 @@ def openssl_set_session_cache_mode(context, mode):
         if hasattr(context, 'set_session_cache_mode'):
             context.set_session_cache_mode(c_mode)
             return
-        if os.name == 'win32':
+        elif OpenSSL.__version__ == '0.13':
+            """
+            http://bazaar.launchpad.net/~exarkun/pyopenssl/release-0.13/view/head:/OpenSSL/ssl/context.h#L27
+            typedef struct {
+                PyObject_HEAD
+                SSL_CTX             *ctx;
+                ...
+            } ssl_ContextObj;
+            https://github.com/openssl/openssl/blob/92c78463720f71e47c251ffa58493e32cd793e13/ssl/ssl.h#L884
+            struct ssl_ctx_st
+                {
+                const SSL_METHOD *method;
+                STACK_OF(SSL_CIPHER) *cipher_list;
+                STACK_OF(SSL_CIPHER) *cipher_list_by_id;
+                struct x509_store_st *cert_store;
+                LHASH_OF(SSL_SESSION) *sessions;
+                unsigned long session_cache_size;
+                struct ssl_session_st *session_cache_head;
+                struct ssl_session_st *session_cache_tail;
+                int session_cache_mode;
+                ...
+                }
+            """
             import ctypes
             c_context = ctypes.c_void_p.from_address(id(context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
-            ctypes.cdll.ssleay32.SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
-        else:
-            #TODO
-            pass
+            c_session_cache_mode = ctypes.c_int.from_address(c_context.value+ctypes.sizeof(ctypes.c_voidp)*7+ctypes.sizeof(ctypes.c_ulong))
+            c_session_cache_mode.value = c_mode
     except Exception as e:
         logging.warning('openssl_set_session_cache_mode failed: %r', e)
 
