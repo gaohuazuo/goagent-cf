@@ -448,7 +448,8 @@ def openssl_set_session_cache_mode(context, mode):
                 ctypes.c_int.from_address(c_context.value+ctypes.sizeof(ctypes.c_voidp)*7+ctypes.sizeof(ctypes.c_ulong)).value = c_mode
             else:
                 import ctypes.util
-                ctypes.cdll.LoadLibrary(ctypes.util.find_library('ssl')).SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
+                # FIXME
+                # ctypes.cdll.LoadLibrary(ctypes.util.find_library('ssl')).SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
     except Exception as e:
         logging.warning('openssl_set_session_cache_mode failed: %r', e)
 
