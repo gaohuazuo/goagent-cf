@@ -348,7 +348,7 @@ class SSLConnection(object):
 
     def __iowait(self, io_func, *args, **kwargs):
         timeout = self._sock.gettimeout() or 0.1
-        fd = self._sock.fileno()
+        fd = self._sock
         while True:
             try:
                 return io_func(*args, **kwargs)
