@@ -439,7 +439,7 @@ def openssl_set_session_cache_mode(context, mode):
         c_mode = {'off':SESS_CACHE_OFF, 'client':SESS_CACHE_CLIENT, 'server':SESS_CACHE_SERVER, 'both':SESS_CACHE_BOTH}[mode.lower()]
         if hasattr(context, 'set_session_cache_mode'):
             context.set_session_cache_mode(c_mode)
-        elif OpenSSL.__version__ == '0.13':
+        elif OpenSSL.__version__ == '0.13' and os.name == 'nt':
             """
             http://bazaar.launchpad.net/~exarkun/pyopenssl/release-0.13/view/head:/OpenSSL/ssl/context.h#L27
             typedef struct {
