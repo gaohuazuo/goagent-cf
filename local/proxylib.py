@@ -439,7 +439,7 @@ def openssl_set_session_cache_mode(context, mode):
         c_mode = {'off':SESS_CACHE_OFF, 'client':SESS_CACHE_CLIENT, 'server':SESS_CACHE_SERVER, 'both':SESS_CACHE_BOTH}[mode.lower()]
         if hasattr(context, 'set_session_cache_mode'):
             context.set_session_cache_mode(c_mode)
-        elif OpenSSL.__version__ == '0.13' and os.name == 'nt':
+        elif OpenSSL.__version__ == '0.13':
             """
             http://bazaar.launchpad.net/~exarkun/pyopenssl/release-0.13/view/head:/OpenSSL/ssl/context.h#L27
             typedef struct {
@@ -464,8 +464,10 @@ def openssl_set_session_cache_mode(context, mode):
             """
             import ctypes
             c_context = ctypes.c_void_p.from_address(id(context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
-            c_session_cache_mode = ctypes.c_int.from_address(c_context.value+ctypes.sizeof(ctypes.c_voidp)*7+ctypes.sizeof(ctypes.c_ulong))
-            c_session_cache_mode.value = c_mode
+            if os.name == 'nt':
+                ctypes.c_int.from_address(c_context.value+ctypes.sizeof(ctypes.c_voidp)*7+ctypes.sizeof(ctypes.c_ulong)).value = c_mode
+            else:
+                ctypes.cdll.LoadLibrary('libssl.so').SSL_CTX_ctrl(c_context, SSL_CTRL_SET_SESS_CACHE_MODE, c_mode, None)
     except Exception as e:
         logging.warning('openssl_set_session_cache_mode failed: %r', e)
 
