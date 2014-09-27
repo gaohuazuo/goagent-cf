@@ -336,6 +336,8 @@ class CertUtil(object):
 class SSLConnection(object):
     """OpenSSL Connection Wapper"""
 
+    handshaked_timeout = 5.0
+
     def __init__(self, context, sock):
         self._context = context
         self._sock = sock
@@ -347,19 +349,23 @@ class SSLConnection(object):
             return getattr(self._connection, attr)
 
     def __iowait(self, io_func, *args, **kwargs):
-        timeout = self._sock.gettimeout() or 0.1
-        fd = self._sock
+        timeout = self._sock.fileno() or self.__class__.handshaked_timeout
+        fd = self._sock.fileno()
         while True:
             try:
                 return io_func(*args, **kwargs)
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
                 sys.exc_clear()
-                _, _, errors = select.select([fd], [], [fd], timeout)
+                ins, _, errors = select.select([fd], [], [fd], timeout)
+                if not ins:
+                    raise socket.timeout('timed out')
                 if errors:
                     break
             except OpenSSL.SSL.WantWriteError:
                 sys.exc_clear()
-                _, _, errors = select.select([], [fd], [fd], timeout)
+                _, outs, errors = select.select([], [fd], [fd], timeout)
+                if not outs:
+                    raise socket.timeout('timed out')
                 if errors:
                     break
 
