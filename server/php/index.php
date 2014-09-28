@@ -48,21 +48,22 @@ function decode_request($data) {
     $headers_data = gzinflate(substr($data, 2, $headers_length));
     $body = substr($data, 2+intval($headers_length));
 
-    $method  = '';
-    $url     = '';
+    $lines = explode("\r\n", $headers_data);
+    $raw_request_line = array_shift($lines);
+    $items = explode(" ", $raw_request_line);
+
+    $method = $items[0];
+    $url = $items[1];
+
     $headers = array();
     $kwargs  = array();
 
-    foreach (explode("\n", $headers_data) as $kv) {
-        $pair = explode(':', $kv, 2);
+    foreach ($lines as $line) {
+        $pair = explode(':', $line, 2);
         $key  = $pair[0];
         $value = trim($pair[1]);
-        if ($key == 'G-Method') {
-            $method = $value;
-        } else if ($key == 'G-Url') {
-            $url = $value;
-        } else if (substr($key, 0, 2) == 'G-') {
-            $kwargs[strtolower(substr($key, 2))] = $value;
+        if (substr($key, 0, 6) == 'X-GOA-') {
+            $kwargs[strtolower(substr($key, 6))] = $value;
         } else if ($key) {
             $key = join('-', array_map('ucfirst', explode('-', $key)));
             $headers[$key] = $value;
