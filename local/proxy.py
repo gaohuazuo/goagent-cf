@@ -473,7 +473,6 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 return
 
     def fetch(self, handler, method, url, headers, body, timeout, **kwargs):
-        rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
         if isinstance(body, basestring) and body:
             if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
                 zbody = deflate(body)
@@ -493,9 +492,9 @@ class GAEFetchPlugin(BaseFetchPlugin):
             kwargs['validate'] = self.validate
         if self.maxsize:
             kwargs['maxsize'] = self.maxsize
-        metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
-        skip_headers = handler.skip_headers
-        metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
+        payload = '%s %s %s\r\n' % (method, url, handler.request_version)
+        payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in handler.skip_headers)
+        payload += ''.join('X-GOA-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
         # prepare GAE request
         request_method = 'POST'
         fetchserver_index = random.randint(0, len(self.appids)-1) if 'Range' in headers else 0
@@ -504,18 +503,18 @@ class GAEFetchPlugin(BaseFetchPlugin):
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
             fetchserver += 'ps/%d%s.gif' % (int(time.time()*1000), random.random())
-            request_headers['X-GOA-PS1'] = base64.b64encode(deflate(metadata)).strip()
+            request_headers['X-GOA-PS1'] = base64.b64encode(deflate(payload)).strip()
             if body:
                 request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
                 body = ''
             if common.GAE_PAGESPEED:
                 fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', fetchserver)
         else:
-            metadata = deflate(metadata)
-            body = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, body)
+            payload = deflate(payload)
+            body = '%s%s%s' % (struct.pack('!h', len(payload)), payload, body)
             if 'rc4' in common.GAE_OPTIONS:
                 request_headers['X-GOA-Options'] = 'rc4'
-                body = rc4crypt(body, kwargs.get('password'))
+                body = RC4Cipher(kwargs.get('password')).encrypt(body)
             request_headers['Content-Length'] = str(len(body))
         # post data
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
