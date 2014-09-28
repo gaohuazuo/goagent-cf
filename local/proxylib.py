@@ -1977,8 +1977,11 @@ class MultipleConnectionMixin(object):
             logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
-                thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
-                #thread.start_new_thread(create_connection, (addr, timeout, queobj))
+                if sys.platform != 'darwin':
+                    thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
+                else:
+                    # Workaround for CPU 100% issue under MacOSX
+                    thread.start_new_thread(create_connection, (addr, timeout, queobj))
             errors = []
             for i in range(len(addrs)):
                 sock = queobj.get()
