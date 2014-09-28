@@ -80,12 +80,15 @@ class XORCipher(object):
 
 
 def decode_request(data):
-    metadata_length, = struct.unpack('!h', data[:2])
-    metadata = zlib.decompress(data[2:2+metadata_length], -zlib.MAX_WBITS)
-    body = data[2+metadata_length:]
-    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
-    method = headers.pop('G-Method')
-    url = headers.pop('G-Url')
+    payload_length, = struct.unpack('!h', data[:2])
+    payload = zlib.decompress(data[2:2+payload_length], -zlib.MAX_WBITS)
+    body = data[2+payload_length:]
+    raw_response_line, payload = payload.split('\r\n', 1)
+    method, url = raw_response_line.split()[:2]
+    headers = {}
+    for line in payload.splitlines():
+        key, value = line.split(':', 1)
+        headers[key.title()] = value.strip()
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
     if headers.get('Content-Encoding', '') == 'deflate':

@@ -574,16 +574,21 @@ class PHPFetchPlugin(BaseFetchPlugin):
             kwargs['password'] = self.password
         if self.validate:
             kwargs['validate'] = self.validate
-        metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
-        metadata = deflate(metadata)
-        app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
-        app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
+        payload = '%s %s %s\r\n' % (method, url, handler.request_version)
+        payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in handler.skip_headers)
+        payload += ''.join('X-GOA-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+        body = b''.join((struct.pack('!h', len(payload)), payload, body))
+        request_headers = {'Content-Length': len(body), 'Content-Type': 'application/octet-stream'}
         fetchserver = '%s?%s' % (self.fetchservers[0], random.random())
         crlf = 0
         cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-        response = handler.create_http_request('POST', fetchserver, app_headers, app_body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
-        if not response:
-            raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
+        try:
+            response = handler.create_http_request('POST', fetchserver, request_headers, body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
+        except Exception as e:
+            response.status = 502
+            response.fp = io.BytesIO('urlfetch %r return %r' % (url, e))
+            response.read = response.fp.read
+            return response
         response.app_status = response.status
         need_decrypt = self.password and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
