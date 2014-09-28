@@ -14,7 +14,11 @@ handlers:
   secure: optional
 
 - url: /2.*
-  script: gae.legacy_application
+  script: legacy.application
+  secure: optional
+
+- url: /fetch\.py
+  script: legacy.LegacyHandler.application
   secure: optional
 
 - url: /robots.txt
