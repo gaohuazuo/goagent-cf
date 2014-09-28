@@ -138,7 +138,10 @@ def application(environ, start_response):
             body = input_data[2+payload_length:]
         raw_response_line, payload = payload.split('\r\n', 1)
         method, url = raw_response_line.split()[:2]
-        headers = dict(x.split(':', 1) for x in payload.splitlines() if x)
+        headers = {}
+        for line in payload.splitlines():
+            key, value = line.split(':', 1)
+            headers[key.title()] = value.strip()
     except (zlib.error, KeyError, ValueError):
         import traceback
         yield format_response(500, {'Content-Type': 'text/html; charset=utf-8'}, message_html('500 Internal Server Error', 'Bad Request (payload) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc()))
