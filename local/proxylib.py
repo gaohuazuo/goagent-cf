@@ -1916,11 +1916,12 @@ class MultipleConnectionMixin(object):
                 if sock:
                     sock.close()
         def close_connection(count, queobj, first_tcp_time, first_ssl_time):
+            need_cache_count = 1
             for _ in range(count):
                 sock = queobj.get()
                 ssl_time_threshold = min(1, 1.3 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
-                    if cache_key and sock.ssl_time < ssl_time_threshold:
+                    if need_cache_count > 0 and cache_key and sock.ssl_time < ssl_time_threshold:
                         cache_queue = self.ssl_connection_cache[cache_key]
                         if cache_queue.qsize() < 8:
                             try:
@@ -1929,6 +1930,7 @@ class MultipleConnectionMixin(object):
                             except Queue.Empty:
                                 pass
                         cache_queue.put((time.time(), sock))
+                        need_cache_count -= 1
                     else:
                         sock.close()
         def reorg_ipaddrs():
