@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.4'
+__version__ = '3.2.0'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -92,7 +92,7 @@ def decode_request(data):
         key, value = line.split(':', 1)
         headers[key.title()] = value.strip()
     kwargs = {}
-    any(kwargs.__setitem__(x[11:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('X-URLFETCH-'))
+    any(kwargs.__setitem__(x[11:].lower(), headers.pop(x)) for x in headers.keys() if x.lower().startswith('x-urlfetch-'))
     if headers.get('Content-Encoding', '') == 'deflate':
         body = zlib.decompress(body, -zlib.MAX_WBITS)
         headers['Content-Length'] = str(len(body))
