@@ -105,7 +105,7 @@ def format_response(status, headers, content):
 
 
 def application(environ, start_response):
-    if environ['REQUEST_METHOD'] == 'GET' and 'HTTP_X_GOA_PS1' not in environ:
+    if environ['REQUEST_METHOD'] == 'GET' and 'HTTP_X_URLFETCH_PS1' not in environ:
         timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
         ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
         start_response('200 OK', [('Content-Type', 'text/plain')])
@@ -119,15 +119,15 @@ def application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'HEAD':
         raise StopIteration
 
-    options = environ.get('HTTP_X_GOA_OPTIONS', '')
+    options = environ.get('HTTP_X_URLFETCH_OPTIONS', '')
     if 'rc4' in options and not __password__:
         yield format_response(400, {'Content-Type': 'text/html; charset=utf-8'}, message_html('400 Bad Request', 'Bad Request (options) - please set __password__ in gae.py', 'please set __password__ and upload gae.py again'))
         raise StopIteration
 
     try:
-        if 'HTTP_X_GOA_PS1' in environ:
-            payload = inflate(base64.b64decode(environ['HTTP_X_GOA_PS1']))
-            body = inflate(base64.b64decode(environ['HTTP_X_GOA_PS2'])) if 'HTTP_X_GOA_PS2' in environ else ''
+        if 'HTTP_X_URLFETCH_PS1' in environ:
+            payload = inflate(base64.b64decode(environ['HTTP_X_URLFETCH_PS1']))
+            body = inflate(base64.b64decode(environ['HTTP_X_URLFETCH_PS2'])) if 'HTTP_X_URLFETCH_PS2' in environ else ''
         else:
             wsgi_input = environ['wsgi.input']
             input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH', '0')))
@@ -148,7 +148,7 @@ def application(environ, start_response):
         raise StopIteration
 
     kwargs = {}
-    any(kwargs.__setitem__(x[len('x-goa-'):].lower(), headers.pop(x)) for x in headers.keys() if x.lower().startswith('x-goa-'))
+    any(kwargs.__setitem__(x[len('x-urlfetch-'):].lower(), headers.pop(x)) for x in headers.keys() if x.lower().startswith('x-urlfetch-'))
 
     if 'Content-Encoding' in headers and body:
         if headers['Content-Encoding'] == 'deflate':

@@ -57,13 +57,16 @@ function decode_request($data) {
 
     $headers = array();
     $kwargs  = array();
+    $kwargs_prefix = 'X-URLFETCH-';
 
     foreach ($lines as $line) {
+        if (!$line)
+            continue;
         $pair = explode(':', $line, 2);
         $key  = $pair[0];
         $value = trim($pair[1]);
-        if (substr($key, 0, 6) == 'X-GOA-') {
-            $kwargs[strtolower(substr($key, 6))] = $value;
+        if (stripos($key, $kwargs_prefix) === 0) {
+            $kwargs[strtolower(substr($key, strlen($kwargs_prefix)))] = $value;
         } else if ($key) {
             $key = join('-', array_map('ucfirst', explode('-', $key)));
             $headers[$key] = $value;
@@ -131,7 +134,7 @@ function post() {
     if ($password) {
         if (!isset($kwargs['password']) || $password != $kwargs['password']) {
             header("HTTP/1.0 403 Forbidden");
-            echo message_html('403 Forbidden', 'Wrong Password', 'please edit proxy.ini');
+            echo message_html('403 Forbidden', 'Wrong Password', "please edit proxy.ini");
             exit(-1);
         }
     }

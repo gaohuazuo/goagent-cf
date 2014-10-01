@@ -87,10 +87,12 @@ def decode_request(data):
     method, url = raw_response_line.split()[:2]
     headers = {}
     for line in payload.splitlines():
+        if not line:
+            continue
         key, value = line.split(':', 1)
         headers[key.title()] = value.strip()
     kwargs = {}
-    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+    any(kwargs.__setitem__(x[11:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('X-URLFETCH-'))
     if headers.get('Content-Encoding', '') == 'deflate':
         body = zlib.decompress(body, -zlib.MAX_WBITS)
         headers['Content-Length'] = str(len(body))
