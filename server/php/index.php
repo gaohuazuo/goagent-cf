@@ -49,11 +49,10 @@ function decode_request($data) {
     $body = substr($data, 2+intval($headers_length));
 
     $lines = explode("\r\n", $headers_data);
-    $raw_request_line = array_shift($lines);
-    $items = explode(" ", $raw_request_line);
 
-    $method = $items[0];
-    $url = $items[1];
+    $request_line_items = explode(" ", array_shift($lines));
+    $method = $request_line_items[0];
+    $url = $request_line_items[1];
 
     $headers = array();
     $kwargs  = array();
