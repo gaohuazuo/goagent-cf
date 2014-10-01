@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-var __version__  = '3.1.2';
+var __version__  = '3.2.0';
 var __password__ = '123456';
 var __hostsdeny__ = []; // var __hostsdeny__ = ['.youtube.com', '.youku.com'];
 var __content_type__ = 'image/gif';
