@@ -56,17 +56,17 @@ function decode_request(data, callback) {
     request.body = data.slice(2+headers_length);
 
     zlib.inflateRaw(data.slice(2, 2+headers_length), function(error, buff) {
-        buff.toString().split("\n").forEach(function(line) {
+        lines = buff.toString().split("\r\n");
+        request_line_items = lines.shift().split(" ");
+        request.method = request_line_items[0];
+        request.url = request_line_items[1];
+        lines.forEach(function(line) {
             var pos = line.indexOf(':');
             if (pos > 0) {
                 var key = line.substring(0, pos);
                 var value = line.substring(pos+1);
-                if (key == 'G-Method') {
-                    request.method = value;
-                } else if (key == 'G-Url') {
-                    request.url = value;
-                } else if (key.indexOf('G-') == 0) {
-                    request.kwargs[key.substring(2)] = value;
+                if (key.indexOf('X-URLFETCH-') == 0) {
+                    request.kwargs[key.substring(11)] = value;
                 } else {
                     request.headers[key] = value;
                 }

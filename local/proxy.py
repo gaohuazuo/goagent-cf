@@ -494,7 +494,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
             kwargs['maxsize'] = self.maxsize
         payload = '%s %s %s\r\n' % (method, url, handler.request_version)
         payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in handler.skip_headers)
-        payload += ''.join('X-GOA-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+        payload += ''.join('X-URLFETCH-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
         # prepare GAE request
         request_method = 'POST'
         fetchserver_index = random.randint(0, len(self.appids)-1) if 'Range' in headers else 0
@@ -503,9 +503,9 @@ class GAEFetchPlugin(BaseFetchPlugin):
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
             fetchserver += 'ps/%d%s.gif' % (int(time.time()*1000), random.random())
-            request_headers['X-GOA-PS1'] = base64.b64encode(deflate(payload)).strip()
+            request_headers['X-URLFETCH-PS1'] = base64.b64encode(deflate(payload)).strip()
             if body:
-                request_headers['X-GOA-PS2'] = base64.b64encode(deflate(body)).strip()
+                request_headers['X-URLFETCH-PS2'] = base64.b64encode(deflate(body)).strip()
                 body = ''
             if common.GAE_PAGESPEED:
                 fetchserver = re.sub(r'^(\w+://)', r'\g<1>1-ps.googleusercontent.com/h/', fetchserver)
@@ -513,7 +513,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
             payload = deflate(payload)
             body = '%s%s%s' % (struct.pack('!h', len(payload)), payload, body)
             if 'rc4' in common.GAE_OPTIONS:
-                request_headers['X-GOA-Options'] = 'rc4'
+                request_headers['X-URLFETCH-Options'] = 'rc4'
                 body = RC4Cipher(kwargs.get('password')).encrypt(body)
             request_headers['Content-Length'] = str(len(body))
         # post data
@@ -525,7 +525,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         response.app_status = response.status
         if response.app_status != 200:
             return response
-        if 'rc4' in request_headers.get('X-GOA-Options', ''):
+        if 'rc4' in request_headers.get('X-URLFETCH-Options', ''):
             response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         data = response.read(2)
         if len(data) < 2:
@@ -576,8 +576,9 @@ class PHPFetchPlugin(BaseFetchPlugin):
             kwargs['validate'] = self.validate
         payload = '%s %s %s\r\n' % (method, url, handler.request_version)
         payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in handler.skip_headers)
-        payload += ''.join('X-GOA-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
-        body = b''.join((struct.pack('!h', len(payload)), payload, body))
+        payload += ''.join('X-URLFETCH-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+        payload = deflate(payload)
+        body = '%s%s%s' % ((struct.pack('!h', len(payload)), payload, body))
         request_headers = {'Content-Length': len(body), 'Content-Type': 'application/octet-stream'}
         fetchserver = '%s?%s' % (self.fetchservers[0], random.random())
         crlf = 0
@@ -585,10 +586,8 @@ class PHPFetchPlugin(BaseFetchPlugin):
         try:
             response = handler.create_http_request('POST', fetchserver, request_headers, body, self.connect_timeout, crlf=crlf, cache_key=cache_key)
         except Exception as e:
-            response.status = 502
-            response.fp = io.BytesIO('urlfetch %r return %r' % (url, e))
-            response.read = response.fp.read
-            return response
+            logging.warning('%s "%s" failed %r', method, url, e)
+            return
         response.app_status = response.status
         need_decrypt = self.password and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         if need_decrypt:
