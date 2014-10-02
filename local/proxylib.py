@@ -1930,7 +1930,8 @@ class MultipleConnectionMixin(object):
                             except Queue.Empty:
                                 pass
                         cache_queue.put((time.time(), sock))
-                        need_cache_count -= 1
+                        if sock.getpeername()[0] not in self.iplist_predefined:
+                            need_cache_count -= 1
                     else:
                         sock.close()
         def reorg_ipaddrs():
