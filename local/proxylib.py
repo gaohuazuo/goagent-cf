@@ -223,7 +223,7 @@ class CertUtil(object):
             cert.set_serial_number(CertUtil.get_cert_serial_number(commonname))
         except OpenSSL.SSL.Error:
             cert.set_serial_number(int(time.time()*1000))
-        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notBefore(-600) #avoid crt time error warning
         cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
