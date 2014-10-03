@@ -380,7 +380,7 @@ class SSLConnection(object):
     def connect(self, *args, **kwargs):
         return self.__iowait(self._connection.connect, *args, **kwargs)
 
-    def send(self, data, flags=0):
+    def __send(self, data, flags=0):
         try:
             return self.__iowait(self._connection.send, data, flags)
         except OpenSSL.SSL.SysCallError as e:
@@ -388,6 +388,13 @@ class SSLConnection(object):
                 # errors when writing empty strings are expected and can be ignored
                 return 0
             raise
+
+    def __send_memoryview(self, data, flags=0):
+        if hasattr(data, 'tobytes'):
+            data = data.tobytes()
+        return self.__send(data, flags)
+
+    send = __send if sys.version_info >= (2, 7, 5) else __send_memoryview
 
     def recv(self, bufsiz, flags=0):
         pending = self._connection.pending()
