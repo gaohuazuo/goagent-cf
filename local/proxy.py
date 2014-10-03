@@ -676,18 +676,19 @@ class HostsFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         host, port = handler.host, handler.port
         hostport = handler.path if handler.command == 'CONNECT' else '%s:%d' % (host, port)
+        headfirst = '.google' in host
         if host in self.host_map:
-            return 'direct', {'cache_key': '%s:%d' % (self.host_map[host], port)}
+            return 'direct', {'cache_key': '%s:%d' % (self.host_map[host], port), 'headfirst': headfirst}
         elif host.endswith(self.host_postfix_endswith):
             self.host_map[host] = next(self.host_postfix_map[x] for x in self.host_postfix_map if host.endswith(x))
-            return 'direct', {'cache_key': '%s:%d' % (self.host_map[host], port)}
+            return 'direct', {'cache_key': '%s:%d' % (self.host_map[host], port), 'headfirst': headfirst}
         elif hostport in self.hostport_map:
-            return 'direct', {'cache_key': '%s:%d' % (self.hostport_map[hostport], port)}
+            return 'direct', {'cache_key': '%s:%d' % (self.hostport_map[hostport], port), 'headfirst': headfirst}
         elif hostport.endswith(self.hostport_postfix_endswith):
             self.hostport_map[hostport] = next(self.hostport_postfix_map[x] for x in self.hostport_postfix_map if hostport.endswith(x))
-            return 'direct', {'cache_key': '%s:%d' % (self.hostport_map[hostport], port)}
+            return 'direct', {'cache_key': '%s:%d' % (self.hostport_map[hostport], port), 'headfirst': headfirst}
         if handler.command != 'CONNECT' and self.urlre_map and any(x(handler.path) for x in self.urlre_map):
-            return 'direct', {}
+            return 'direct', {'headfirst': headfirst}
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
