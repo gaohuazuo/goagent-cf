@@ -967,7 +967,7 @@ class MockFetchPlugin(BaseFetchPlugin):
 class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
 
-    def __init__(self, ssl_version='TLSv1', ciphers='ALL:!aNULL:!eNULL', cache_size=128, session_cache=True):
+    def __init__(self, ssl_version='SSLv23', ciphers='ALL:!aNULL:!eNULL', cache_size=128, session_cache=True):
         self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
         self.ciphers = ciphers
         self.ssl_context_cache = LRUCache(cache_size*2)
@@ -1460,7 +1460,7 @@ class SimpleProxyHandler(BaseHTTPRequestHandler):
     handler_filters = [SimpleProxyHandlerFilter()]
     handler_plugins = {'direct': DirectFetchPlugin(),
                        'mock': MockFetchPlugin(),
-                       'strip': StripPlugin('SSLv23', 'RC4-SHA:!aNULL:!eNULL'),}
+                       'strip': StripPlugin(),}
 
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
