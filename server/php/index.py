@@ -29,6 +29,17 @@ import zlib
 import collections
 import Queue
 
+try:
+    import socket
+    import select
+    sock = socket.create_connection(('8.8.8.8', 53), timeout=1)
+    assert select.select([], [sock], [], 0.1)[1]
+    sock.close()
+    del sock
+except Exception:
+    socket = select = None
+
+
 normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
 def message_html(title, banner, detail=''):
