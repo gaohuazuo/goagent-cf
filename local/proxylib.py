@@ -1619,7 +1619,7 @@ class MultipleConnectionMixin(object):
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         client_hello = kwargs.get('client_hello', None)
-        cache_key = kwargs.get('cache_key', '') if self.tcp_connection_cachesock and not client_hello else ''
+        cache_key = kwargs.get('cache_key', '') if not client_hello else ''
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             sock = None
@@ -1684,7 +1684,7 @@ class MultipleConnectionMixin(object):
                 sock = queobj.get()
                 tcp_time_threshold = min(1, 1.3 * first_tcp_time)
                 if sock and not isinstance(sock, Exception):
-                    if cache_key and sock.tcp_time < tcp_time_threshold:
+                    if cache_key and (sock.getpeername()[0] in self.iplist_predefined or self.tcp_connection_cachesock) and sock.tcp_time < tcp_time_threshold:
                         cache_queue = self.tcp_connection_cache[cache_key]
                         if cache_queue.qsize() < 8:
                             try:
@@ -1752,7 +1752,7 @@ class MultipleConnectionMixin(object):
             raise sock
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        cache_key = kwargs.get('cache_key', '') if self.ssl_connection_cachesock else ''
+        cache_key = kwargs.get('cache_key', '')
         validate = kwargs.get('validate')
         headfirst = kwargs.get('headfirst')
         def create_connection(ipaddr, timeout, queobj):
@@ -1923,12 +1923,11 @@ class MultipleConnectionMixin(object):
                 if sock:
                     sock.close()
         def close_connection(count, queobj, first_tcp_time, first_ssl_time):
-            need_cache_count = 1
             for _ in range(count):
                 sock = queobj.get()
                 ssl_time_threshold = min(1, 1.3 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
-                    if need_cache_count > 0 and cache_key and sock.ssl_time < ssl_time_threshold:
+                    if cache_key and (sock.getpeername()[0] in self.iplist_predefined or self.ssl_connection_cachesock) and sock.ssl_time < ssl_time_threshold:
                         cache_queue = self.ssl_connection_cache[cache_key]
                         if cache_queue.qsize() < 8:
                             try:
@@ -1937,8 +1936,6 @@ class MultipleConnectionMixin(object):
                             except Queue.Empty:
                                 pass
                         cache_queue.put((time.time(), sock))
-                        if sock.getpeername()[0] not in self.iplist_predefined:
-                            need_cache_count -= 1
                     else:
                         sock.close()
         def reorg_ipaddrs():
