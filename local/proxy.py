@@ -454,10 +454,10 @@ class GAEFetchPlugin(BaseFetchPlugin):
             bufsize = 8192
             while True:
                 data = None
-                with gevent.Timeout(2, False):
+                with gevent.Timeout(self.connect_timeout, False):
                     data = response.read(bufsize)
                 if data is None:
-                    logging.warning('response.read(%r) timeout', bufsize)
+                    logging.warning('response.read(%r) %r timeout', bufsize, url)
                 if data:
                     handler.wfile.write(data)
                 if not data:
