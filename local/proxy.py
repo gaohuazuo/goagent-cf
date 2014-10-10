@@ -1451,6 +1451,7 @@ class Common(object):
                     logging.warning('socket.getaddrinfo host=%r failed: %s', host, e)
                     time.sleep(0.1)
         google_blacklist = ['216.239.32.20'] + list(self.DNS_BLACKLIST)
+        google_blacklist_prefix = tuple(x for x in self.DNS_BLACKLIST if x.endswith('.'))
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
                 continue
@@ -1476,6 +1477,7 @@ class Common(object):
                 resolved_iplist = list(set(resolved_iplist))
             if name.startswith('google_'):
                 resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
+                resolved_iplist = [x for x in resolved_iplist if not x.startswith(google_blacklist_prefix)]
             if len(resolved_iplist) == 0 and name in ('google_hk', 'google_cn') and not self.GAE_IPV6:
                 logging.error('resolve %s host return empty! please retry!', name)
                 sys.exit(-1)
