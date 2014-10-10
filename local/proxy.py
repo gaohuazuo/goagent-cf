@@ -458,6 +458,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
                     data = response.read(bufsize)
                 if data is None:
                     logging.warning('response.read(%r) %r timeout', bufsize, url)
+                    handler.close_connection = True
+                    break
                 if data:
                     handler.wfile.write(data)
                 if not data:
