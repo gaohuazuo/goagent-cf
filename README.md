@@ -1,6 +1,5 @@
 goagent 3.2.0 正式版下载 [http://goo.gl/qFyRk](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
 
-------
 ## 简易教程
 
 #### 部署
