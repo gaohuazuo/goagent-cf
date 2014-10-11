@@ -1318,7 +1318,7 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
             if hostname.endswith(self.forcehttps_sites) and hostname not in self.noforcehttps_sites:
                 repl = 'https://%s' % repl[len('http://'):]
         headers = {'Location': repl, 'Connection': 'close'}
-        return 'mock', {'status': 301, 'headers': headers, 'body': ''}
+        return 'mock', {'status': 302, 'headers': headers, 'body': ''}
 
     def filter_localfile(self, handler, mo, repl):
         filename = repl.lstrip('file://')
