@@ -62,11 +62,16 @@ def upload(dirname, appid):
     assert os.path.isfile(filename), u'%s not exists!' % filename
     with open(filename, 'rb') as fp:
         yaml = fp.read()
-    yaml = re.sub(r'application:\s*\S+', 'application: '+appid, yaml)
     with open(filename, 'wb') as fp:
-        fp.write(yaml)
+        fp.write(re.sub(r'application:\s*\S+', 'application: '+appid, yaml))
     appcfg.main(['appcfg', 'rollback', dirname])
     appcfg.main(['appcfg', 'update', dirname])
+    with open(filename, 'wb') as fp:
+        fp.write(yaml)
+    try:
+        os.remove(appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH)
+    except OSError:
+        pass
 
 
 def main():
@@ -79,7 +84,7 @@ def main():
         sys.exit(-1)
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
     try:
-        os.remove('.appcfg_cookies')
+        os.remove(appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH)
     except OSError:
         pass
     for appid in appids.split('|'):
