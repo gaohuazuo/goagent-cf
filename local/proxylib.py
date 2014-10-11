@@ -1251,7 +1251,7 @@ class ForceHttpsFilter(BaseProxyHandlerFilter):
         if handler.command != 'CONNECT' and handler.host.endswith(self.forcehttps_sites) and handler.host not in self.noforcehttps_sites:
             if not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
                 logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-                headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Connection': 'close'}
+                headers = {'Location': handler.path.replace('http://', 'https://', 1), 'Content-Length': '0'}
                 return 'mock', {'status': 301, 'headers': headers, 'body': ''}
 
 
@@ -1317,7 +1317,7 @@ class URLRewriteFilter(BaseProxyHandlerFilter):
             hostname = urlparse.urlsplit(repl).hostname
             if hostname.endswith(self.forcehttps_sites) and hostname not in self.noforcehttps_sites:
                 repl = 'https://%s' % repl[len('http://'):]
-        headers = {'Location': repl, 'Connection': 'close'}
+        headers = {'Location': repl, 'Content-Length': '0'}
         return 'mock', {'status': 302, 'headers': headers, 'body': ''}
 
     def filter_localfile(self, handler, mo, repl):
