@@ -27,3 +27,7 @@ goagent 3.2.0 正式版下载 [http://git.io/goa](https://nodeload.github.com/go
 
 ## 更新历史
 * https://github.com/goagent/goagent/blob/wiki/History.md
+
+## 讨论区
+* https://code.google.com/p/goagent/issues/list
+
