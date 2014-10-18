@@ -145,7 +145,7 @@ class CertUtil(object):
 
     ca_vendor = 'GoAgent'
     ca_keyfile = 'CA.crt'
-    ca_thumbprint = 'AB:70:2C:DF:18:EB:E8:B4:38:C5:28:69:CD:4A:5D:EF:48:B4:0E:33'
+    ca_thumbprint = ''
     ca_certdir = 'certs'
     ca_lock = threading.Lock()
 
@@ -155,7 +155,7 @@ class CertUtil(object):
         key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
         ca = OpenSSL.crypto.X509()
         ca.set_serial_number(0)
-        ca.set_version(2)
+        ca.set_version(0)
         subj = ca.get_subject()
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
@@ -185,6 +185,7 @@ class CertUtil(object):
 
     @staticmethod
     def get_cert_serial_number(commonname):
+        assert CertUtil.ca_thumbprint
         saltname = '%s|%s' % (CertUtil.ca_thumbprint, commonname)
         return int(hashlib.md5(saltname.encode('utf-8')).hexdigest(), 16)
 
@@ -275,15 +276,12 @@ class CertUtil(object):
                 X509_ASN_ENCODING = 0x00000001
                 class CRYPT_HASH_BLOB(ctypes.Structure):
                     _fields_ = [('cbData', ctypes.c_ulong), ('pbData', ctypes.c_char_p)]
+                assert CertUtil.ca_thumbprint
                 crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(CertUtil.ca_thumbprint.replace(':', '')))
                 crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_HASH, ctypes.byref(crypt_hash), None)
                 if crypt_handle:
                     crypt32.CertFreeCertificateContext(crypt_handle)
                     return 0
-                # while True:
-                #     crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_SUBJECT_STR, CertUtil.ca_vendor, None)
-                #     if crypt_handle:
-                #         #TODO: delete it
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
                 crypt32.CertCloseStore(store_handle, 0)
                 del crypt32
@@ -310,15 +308,14 @@ class CertUtil(object):
         import ctypes.wintypes
         class CERT_CONTEXT(ctypes.Structure):
             _fields_ = [
-                ("dwCertEncodingType", ctypes.wintypes.DWORD),
-                ("pbCertEncoded", ctypes.POINTER(ctypes.wintypes.BYTE)),
-                ("cbCertEncoded", ctypes.wintypes.DWORD),
-                ("pCertInfo", ctypes.c_void_p),
-                ("hCertStore", ctypes.c_void_p),]
+                ('dwCertEncodingType', ctypes.wintypes.DWORD),
+                ('pbCertEncoded', ctypes.POINTER(ctypes.wintypes.BYTE)),
+                ('cbCertEncoded', ctypes.wintypes.DWORD),
+                ('pCertInfo', ctypes.c_void_p),
+                ('hCertStore', ctypes.c_void_p),]
         crypt32 = ctypes.WinDLL(b'crypt32.dll'.decode())
         store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
         pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, None)
-        need_delete = []
         while pCertCtx:
             certCtx = CERT_CONTEXT.from_address(pCertCtx)
             certdata = ctypes.string_at(certCtx.pbCertEncoded, certCtx.cbCertEncoded)
@@ -327,10 +324,8 @@ class CertUtil(object):
                 cert = cert.get_subject()
             cert_name = next((v for k, v in cert.get_components() if k == 'CN'), '')
             if cert_name and name == cert_name:
-                need_delete.append(pCertCtx)
+                crypt32.CertDeleteCertificateFromStore(crypt32.CertDuplicateCertificateContext(pCertCtx))
             pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, pCertCtx)
-        for pCertCtx in need_delete:
-            crypt32.CertDeleteCertificateFromStore(pCertCtx)
         return 0
 
     @staticmethod
@@ -341,6 +336,8 @@ class CertUtil(object):
         if not os.path.exists(capath):
             if os.path.exists(certdir):
                 any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
+            if os.name == 'nt':
+                CertUtil.remove_ca('%s CA' % CertUtil.ca_vendor)
             CertUtil.dump_ca()
         with open(capath, 'rb') as fp:
             CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest('sha1')
