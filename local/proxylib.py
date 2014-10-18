@@ -305,7 +305,7 @@ class CertUtil(object):
         return 0
 
     @staticmethod
-    def remove_ca(thumbprint):
+    def remove_ca(name):
         import ctypes
         import ctypes.wintypes
         class CERT_CONTEXT(ctypes.Structure):
@@ -314,15 +314,23 @@ class CertUtil(object):
                 ("pbCertEncoded", ctypes.POINTER(ctypes.wintypes.BYTE)),
                 ("cbCertEncoded", ctypes.wintypes.DWORD),
                 ("pCertInfo", ctypes.c_void_p),
-                ("hCertStore", ctypes.c_void_p),
-                ]
+                ("hCertStore", ctypes.c_void_p),]
         crypt32 = ctypes.WinDLL(b'crypt32.dll'.decode())
         store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
         pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, None)
+        need_delete = []
         while pCertCtx:
             certCtx = CERT_CONTEXT.from_address(pCertCtx)
-            #TODO
+            certdata = ctypes.string_at(certCtx.pbCertEncoded, certCtx.cbCertEncoded)
+            cert =  OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, certdata)
+            if hasattr(cert, 'get_subject'):
+                cert = cert.get_subject()
+            cert_name = next((v for k, v in cert.get_components() if k == 'CN'), '')
+            if cert_name and name == cert_name:
+                need_delete.append(pCertCtx)
             pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, pCertCtx)
+        for pCertCtx in need_delete:
+            crypt32.CertDeleteCertificateFromStore(pCertCtx)
         return 0
 
     @staticmethod
