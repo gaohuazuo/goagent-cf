@@ -742,6 +742,11 @@ def extract_sni_name(packet):
                 server_name = edata[5:]
                 return server_name
 
+def random_hostname():
+    word = ''.join(random.choice(('bcdfghjklmnpqrstvwxyz', 'aeiou')[x&1]) for x in xrange(random.randint(5, 10)))
+    gltd = random.choice(['org', 'com', 'net', 'gov', 'cn'])
+    return 'www.%s.%s' % (word, gltd)
+
 
 def get_uptime():
     if os.name == 'nt':
@@ -1845,7 +1850,7 @@ class MultipleConnectionMixin(object):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
-                server_hostname = b'www.googleapis.com' if (cache_key or '').startswith('google_') or hostname.endswith('.appspot.com') else None
+                server_hostname = random_hostname() if (cache_key or '').startswith('google_') or hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
                 ssl_sock.set_connect_state()
                 if server_hostname and hasattr(ssl_sock, 'set_tlsext_host_name'):
