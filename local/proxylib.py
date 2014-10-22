@@ -1035,7 +1035,7 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 4
+    connect_timeout = 8
     read_timeout = 16
     max_retry = 3
 
@@ -1832,7 +1832,7 @@ class MultipleConnectionMixin(object):
             ssl_sock = None
             timer = None
             NetworkError = (socket.error, OpenSSL.SSL.Error, OSError)
-            if gevent:
+            if gevent and (ipaddr[0] not in self.iplist_predefined):
                 NetworkError += (gevent.Timeout,)
                 timer = gevent.Timeout(timeout)
                 timer.start()
