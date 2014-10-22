@@ -1035,7 +1035,7 @@ class StripPlugin(BaseFetchPlugin):
 
 class DirectFetchPlugin(BaseFetchPlugin):
     """direct fetch plugin"""
-    connect_timeout = 8
+    connect_timeout = 4
     read_timeout = 16
     max_retry = 3
 
