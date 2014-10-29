@@ -1398,6 +1398,8 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 try:
                     import mimetypes
                     content_type = mimetypes.types_map.get(os.path.splitext(path)[1])
+                    if os.path.splitext(path)[1].endswith(('crt', 'pem')):
+                        content_type = 'application/x-x509-ca-cert'
                 except StandardError as e:
                     logging.error('import mimetypes failed: %r', e)
                 with open(path, 'rb') as fp:
