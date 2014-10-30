@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '1.0'
+__version__ = '1.1'
 
 import sys
 import os
@@ -1584,7 +1584,7 @@ class MultipleConnectionMixin(object):
     ssl_connection_keepalive = False
     iplist_predefined = set([])
     max_window = 4
-    connect_timeout = 4
+    connect_timeout = 6
     max_timeout = 8
     ssl_version = ssl.PROTOCOL_SSLv23
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
@@ -1698,7 +1698,7 @@ class MultipleConnectionMixin(object):
         try:
             while cache_key:
                 ctime, sock = self.tcp_connection_cache[cache_key].get_nowait()
-                if time.time() - ctime < 8:
+                if time.time() - ctime < self.connect_timeout:
                     return sock
                 else:
                     sock.close()
@@ -1836,8 +1836,8 @@ class MultipleConnectionMixin(object):
             NetworkError = (socket.error, OpenSSL.SSL.Error, OSError)
             if gevent and (ipaddr[0] not in self.iplist_predefined):
                 NetworkError += (gevent.Timeout,)
-                timer = gevent.Timeout(timeout)
-                timer.start()
+                #timer = gevent.Timeout(timeout)
+                #timer.start()
             try:
                 # create a ipv4/ipv6 socket object
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
@@ -1950,7 +1950,7 @@ class MultipleConnectionMixin(object):
         try:
             while cache_key:
                 ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
-                if time.time() - ctime < 4:
+                if time.time() - ctime < self.connect_timeout:
                     return sock
                 else:
                     sock.close()
@@ -1977,6 +1977,8 @@ class MultipleConnectionMixin(object):
             remain_window = 3 * window - len(addrs)
             if 0 < remain_window <= len(addresses):
                 addrs += random.sample(addresses, remain_window)
+            if len(good_ipaddrs) > 2 * window or len(bad_ipaddrs) < 0.5 * len(good_ipaddrs):
+                addrs = addrs[:2*window]
             logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
