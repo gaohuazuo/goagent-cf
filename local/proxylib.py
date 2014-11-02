@@ -153,26 +153,23 @@ class CertUtil(object):
     def create_ca():
         key = OpenSSL.crypto.PKey()
         key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
-        ca = OpenSSL.crypto.X509()
-        ca.set_serial_number(0)
-        ca.set_version(0)
-        subj = ca.get_subject()
+        req = OpenSSL.crypto.X509Req()
+        subj = req.get_subject()
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
         subj.localityName = 'Cernet'
         subj.organizationName = CertUtil.ca_vendor
         subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
         subj.commonName = '%s CA' % CertUtil.ca_vendor
+        req.set_pubkey(key)
+        req.sign(key, 'sha1')
+        ca = OpenSSL.crypto.X509()
+        ca.set_serial_number(0)
         ca.gmtime_adj_notBefore(0)
         ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
-        ca.set_issuer(ca.get_subject())
-        ca.set_pubkey(key)
-        ca.add_extensions([
-            OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
-            # OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
-            OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True, b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
-            OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
-            OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca), ])
+        ca.set_issuer(req.get_subject())
+        ca.set_subject(req.get_subject())
+        ca.set_pubkey(req.get_pubkey())
         ca.sign(key, 'sha1')
         return key, ca
 
