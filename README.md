@@ -16,6 +16,6 @@ goagent 3.2.2 正式版下载 [http://git.io/goa](https://nodeload.github.com/go
 * 更新历史 https://goagent.github.io/?/wiki/History.md
 
 ## 代码
- * proxy.py https://github.com/goagent/goagent/tree/3.0
+ * proxy.py https://github.com/goagent/goagent
  * python27.exe https://github.com/goagent/pybuild
  * goagent.exe https://github.com/goagent/taskbar
