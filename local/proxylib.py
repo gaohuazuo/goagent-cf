@@ -348,7 +348,9 @@ class CertUtil(object):
             if serial_number != CertUtil.get_cert_serial_number(commonname):
                 any(os.remove(x) for x in certfiles)
         #Check CA imported
-        if CertUtil.import_ca(capath) != 0:
+        try:
+            assert CertUtil.import_ca(capath) == 0
+        except Exception:
             logging.warning('install root certificate failed, Please run as administrator/root/sudo')
         #Check Certs Dir
         if not os.path.exists(certdir):
