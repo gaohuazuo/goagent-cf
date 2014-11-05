@@ -334,7 +334,10 @@ class CertUtil(object):
             if os.path.exists(certdir):
                 any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
             if os.name == 'nt':
-                CertUtil.remove_ca('%s CA' % CertUtil.ca_vendor)
+                try:
+                    CertUtil.remove_ca('%s CA' % CertUtil.ca_vendor)
+                except Exception as e:
+                    logging.warning('CertUtil.remove_ca failed: %r', e)
             CertUtil.dump_ca()
         with open(capath, 'rb') as fp:
             CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest('sha1')
