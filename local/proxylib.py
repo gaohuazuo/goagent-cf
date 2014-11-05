@@ -1169,15 +1169,16 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
-            if hostname.startswith(('127.', '192.168.', '10.')):
-                return 'LOCAL'
             if re.match(r'^\d+\.\d+\.\d+\.\d+$', hostname) or ':' in hostname:
                 iplist = [hostname]
             elif dnsservers:
                 iplist = dnslib_record2iplist(dnslib_resolve_over_udp(hostname, dnsservers, timeout=2))
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
-            country_code = self.geoip.country_code_by_addr(iplist[0])
+            if iplist[0].startswith(('127.', '192.168.', '10.')):
+                country_code = 'LOCAL'
+            else:
+                country_code = self.geoip.country_code_by_addr(iplist[0])
         except StandardError as e:
             logging.warning('DirectRegionFilter cannot determine region for hostname=%r %r', hostname, e)
             country_code = ''
