@@ -8,12 +8,12 @@ goagent 3.2.2 正式版下载 [http://git.io/goa](https://nodeload.github.com/go
 * https://code.google.com/p/goagent/issues/list
 
 ## 文档
-* 简易教程 https://goagent.github.io/?/wiki/SimpleGuide.md
-* 图文教程 https://goagent.github.io/?/wiki/InstallGuide.md
-* 常见问题 https://goagent.github.io/?/wiki/FAQ.md
-* 配置介绍 https://goagent.github.io/?/wiki/ConfigIntroduce.md
-* 五毛观止 https://goagent.github.io/?/wiki/SpamList.md
-* 更新历史 https://goagent.github.io/?/wiki/History.md
+* 简易教程 https://github.com/goagent/goagent/blob/wiki/SimpleGuide.md
+* 图文教程 https://github.com/goagent/goagent/blob/wiki/InstallGuide.md
+* 常见问题 https://github.com/goagent/goagent/blob/wiki/FAQ.md
+* 配置介绍 https://github.com/goagent/goagent/blob/wiki/ConfigIntroduce.md
+* 五毛观止 https://github.com/goagent/goagent/blob/wiki/SpamList.md
+* 更新历史 https://github.com/goagent/goagent/blob/wiki/History.md
 
 ## 代码
  * proxy.py https://github.com/goagent/goagent
