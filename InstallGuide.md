@@ -1,19 +1,19 @@
 #图文教程
 
 ##一、申请 Google App Engine 并创建 appid
-  1. 申请注册一个 [Google App Engine](https://appengine.google.com) 账号。没有 Gmail 账号先注册一个， 用你的 Gmail 账号登录。
+  1. 申请注册一个 [Google App Engine](https://appengine.google.com) 账号。没有 Gmail 账号先注册一个， 用你的 Gmail 账号登录。  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thu7y0pgj20hs0atgn9.jpg)
-  1. 登录之后，自动转向 Application 注册页面，如下图：
+  1. 登录之后，自动转向 Application 注册页面，如下图：  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thu8o1tuj20hs067mxn.jpg)
-  1. 接下来的页面，输入你的手机号码，需要注意的是，手机号码前面要+86(中国区号) 格式如：+86 13888888888。
+  1. 接下来的页面，输入你的手机号码，需要注意的是，手机号码前面要+86(中国区号) 格式如：+86 13888888888。  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thubjc3yj20hs07dmxw.jpg)
-    - 然后等待收取手机短信，收到短信后(一串数字号码)填入下图表单，点 send 提交.(有的手机收不到信息，到<https://appengine.google.com/waitlist/sms_issues> 提交该情况，一个工作日就能收到谷歌提示Google App Engine成功开通)。
+    - 然后等待收取手机短信，收到短信后(一串数字号码)填入下图表单，点 send 提交.(有的手机收不到信息，到<https://appengine.google.com/waitlist/sms_issues> 提交该情况，一个工作日就能收到谷歌提示Google App Engine成功开通)。  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thucmsi5j20hc0743z5.jpg)
-  1. 提交完成之后，GAE 账号即被激活，然后就可以创建新的应用程序了。转入 "My Applications" 页面，点击 "Create an Application" 新建应用
+  1. 提交完成之后，GAE 账号即被激活，然后就可以创建新的应用程序了。转入 "My Applications" 页面，点击 "Create an Application" 新建应用  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thug3zu2j20hs07tzku.jpg)
-    - 一个Gmail账户最多可以创建十个GAE应用，每个应用每天 1G 免费流量。这里我们只创建一个应用就可以了。进入下一步，填写新应用的必要信息，如下图。在图中第一处添加一个应用名称，如 abc555 ,验证一下是否可用，如果显示 "Yes" 那么 abc555 就是你的 Appid(记住这个id)，而 abc555.appspot.com 就是你的应用服务器地址了。第二个空可随便填，点击 Create Application 按钮提交
+    - 一个Gmail账户最多可以创建十个GAE应用，每个应用每天 1G 免费流量。这里我们只创建一个应用就可以了。进入下一步，填写新应用的必要信息，如下图。在图中第一处添加一个应用名称，如 abc555 ,验证一下是否可用，如果显示 "Yes" 那么 abc555 就是你的 Appid(记住这个id)，而 abc555.appspot.com 就是你的应用服务器地址了。第二个空可随便填，点击 Create Application 按钮提交  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t7k4v9j.jpg)
-    - 提交之后，就能看到下图这个页面，就说明你已经成功创建了一个新的应用,你也可以点击应用名称，进入控制面板进行管理。
+    - 提交之后，就能看到下图这个页面，就说明你已经成功创建了一个新的应用,你也可以点击应用名称，进入控制面板进行管理。  
     ![申请 GAE 帐号](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e4thubz37cj20go049t8w.jpg)
     - 如果你要建立多个 appid，只需要从步骤 4 开始再重复操作多次就行了。
 
@@ -30,10 +30,10 @@
   1. 运行 goagent.exe
   1. 上传
     - Windows 用户：双击 server 文件夹下的 uploader.bat，输入你上步创建的 appid (同时上传多 appid 在 appid 之间用 | 隔开,一次只能上传同一个谷歌帐户下的 appid )填完按回车。根据提示填你的谷歌帐户邮箱地址，填完按回车。根据提示填你的谷歌帐户密码(注意：如果开启了两步验证，密码应为[16位的应用程序专用密码](https://accounts.google.com/b/0/IssuedAuthSubTokens)而非谷歌帐户密码，否则会出现 AttributeError: can't set attribute 错误)，填完按回车。
-    - Linux/Mac OSX用户上传方法：在server目录下执行：python uploader.py
+    - Linux/Mac OSX用户上传方法：在server目录下执行：python uploader.py  
     ![上传 GAE](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw9e7n5u3iijqj20iq0c8q6b.jpg)
     - 如遇到上传困难的情况，可以先运行 goagent.exe(要先修改 appid )再运行 uploader.bat
-    - 上传成功就会看图下图界面
+    - 上传成功就会看图下图界面  
     ![上传 GAE](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3bnmhap9wj.jpg_uploaded.png)
 
 
@@ -44,8 +44,8 @@
     - 代理地址 127.0.0.1:8087；如需使用 PAC，设置pac地址为 <http://127.0.0.1:8086/proxy.pac>
     - 也可以配合 SwitchySharp/FoxyProxy 等浏览器扩展 (SwitchySharp 用户可从 local 文件夹中的 SwitchyOptions.bak 文件导入配置)
   1. 导入证书
-    - IE/Chrome：使用管理员身份运行 goagent.exe 会自动向系统导入 IE/Chrome 的证书，你也可以双击 local 文件夹中的 CA.crt 安装证书(需要安装到 "受信任的根证书颁发机构" )；
-    ![运行客户端](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6mc176ngnj20bn0dit9l.jpg)
+    - IE/Chrome：使用管理员身份运行 goagent.exe 会自动向系统导入 IE/Chrome 的证书，你也可以双击 local 文件夹中的 CA.crt 安装证书(需要安装到 "受信任的根证书颁发机构" )；  
+    ![运行客户端](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6mc176ngnj20bn0dit9l.jpg)  
     ![运行客户端](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6mc184ah3j20e00e6wg1.jpg)
     - 下一步 -> 完成 -> 确定
     - Firefox：需要单独导入证书，打开FireFox?->选项->高级->加密->查看证书->证书机构->导入证书, 选择 local\CA.crt, 勾选所有项，导入；
@@ -60,16 +60,16 @@
     - <127.0.0.1:8087> 全部使用 GoAgent 代理
   1. 谷歌 Chrome 配合 SwitchySharp 扩展
     - 安装扩展
-    - 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，将 local 文件夹中的 SwitchySharp.crx 拖拽到该页面之后点击确定即可安装，扩展也可以从 Chrome 应用商店获得<https://chrome.google.com/webstore/detail/proxy-switchysharp/dpplabbmogkhghncfbfdeeokoefdjegm>
+    - 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，将 local 文件夹中的 SwitchySharp.crx 拖拽到该页面之后点击确定即可安装，扩展也可以从 Chrome 应用商店获得<https://chrome.google.com/webstore/detail/proxy-switchysharp/dpplabbmogkhghncfbfdeeokoefdjegm>  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e3hhmzjy1zj.jpg_install_Proxy_Switchy_Sharp.png)
     - 导入设置
-      - 点击 SwitchySharp 图标->选项->导入/导出
+      - 点击 SwitchySharp 图标->选项->导入/导出  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e2s44kpzqyj.jpg_bak.png)
       - 浏览到 SwitchyOptions.bak，点击确定导入设置
       - 更新自动切换规则(如果遇到无法更新规则列表，可以先运行 goagent ，并把浏览器代理设置为 GoAgent 模式再更新规则，不更新规则只会影响自动切换模式，不会影响其他模式的使用，若确实无法更新也可不更新，直接使用 PAC 模式即可)
-      - 在扩展设置页点击 "切换规则" ，点击 "立即更新列表" ，最后点击 "保存" 。
+      - 在扩展设置页点击 "切换规则" ，点击 "立即更新列表" ，最后点击 "保存" 。  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3tcf8lij.jpg_getrules.png)
-    - 单击地址栏右侧Proxy  SwitchySharp图标即可进行模式选择
+    - 单击地址栏右侧Proxy  SwitchySharp图标即可进行模式选择  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t6x2ivj.jpg_changemode.png)
       - GoAgent 模式  除匹配 proxy.ini 中 profile 的直连外，其他全部通过GAE
       - GoAgent PAAS模式 全部通过PAAS
@@ -80,50 +80,50 @@
       - 如果遇到无法更新规则列表，可以先运行 goagent，并把浏览器代理设置为 GoAgent 模式再更新规则，不更新规则只会影响自动切换模式，不会影响其他模式的使用，若确实无法更新也可不更新，直接把扩展设置为 GoAgent PAC 模式即可
   1. Firefox 配合 FoxyProxy 扩展
     - 安装扩展 <https://addons.mozilla.org/zh-cn/firefox/addon/foxyproxy-standard/>
-    - 设置
+    - 设置  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t8whfdj.jpg_foxyproxy.png)
-      - 右击 foxyporxy 图标即可选择代理模式
+      - 右击 foxyporxy 图标即可选择代理模式  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3taih9wj.jpg_foxyproxy1.png)
     - 添加代理规则订阅(可选)
-      - 这里以添加 [gfwlist](http://autoproxy-gfwlist.googlecode.com/svn/trunk/gfwlist.txt) 为例，你也可以自行添加其他规则订阅
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f79aksi6j.jpg)
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f7955znpj.jpg)
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f797nabpj.jpg)
+      - 这里以添加 [gfwlist](http://autoproxy-gfwlist.googlecode.com/svn/trunk/gfwlist.txt) 为例，你也可以自行添加其他规则订阅  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f79aksi6j.jpg)  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f7955znpj.jpg)  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f797nabpj.jpg)  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3f79bigcuj.jpg)
     - 更多设置请自行探究
   1. Firefox 配合 AutoProxy 扩展(新版Firefox请将此扩展升级至最新版)
     - 安装扩展 <https://addons.mozilla.org/zh-cn/firefox/addon/autoproxy/>
     - 设置
-      - 添加代理服务器 注意:新版 autoproxy 已内置GoAgent配置，可直接进行下一步
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t49g0ej.jpg_autoproxyfirst.png)
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t08ft0j.jpg_autoproxy1.png)
+      - 添加代理服务器 注意:新版 autoproxy 已内置GoAgent配置，可直接进行下一步  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t49g0ej.jpg_autoproxyfirst.png)  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t08ft0j.jpg_autoproxy1.png)  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t0sibvj.jpg_autoproxy2.png)
-      - 添加规则订阅
-      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t241zej.jpg_autoproxyaddrules1.png)
+      - 添加规则订阅  
+      ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t241zej.jpg_autoproxyaddrules1.png)  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t380m4j.jpg_autoproxyaddrules2.png)
-      - 选择自己需要的模式
+      - 选择自己需要的模式  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3szej8sj.jpg_autoproxy.png)
         - 自动模式   根据规则自行选择是否使用代理
         - 全局模式   全部使用代理
         - 禁用代理   全部不使用代理
   1. opera 浏览器设置
     - 同 IE 一样有两种方式可选，不过不会影响系统其他程序的联网
-    - 设置代理为 127.0.0.1:8087，全部使用 goagent 代理
+    - 设置代理为 127.0.0.1:8087，全部使用 goagent 代理  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3tl5ww7j.jpg_opera1.png)
-    - 使用 PAC 自动代理
+    - 使用 PAC 自动代理  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3tlvyqmj.jpg_opera-pac.png)
     - 不使用时应恢复为无代理状态
   1. IE浏览器设置
     - 工具->Internet 选项->连接，局域网用户单击"局域网设置"。宽带用户选中自己正在使用的宽带连接之后单击"设置"，不要选 "局域网设置"
     - 局域网用户设置方法
-      - 设置代理为 127.0.0.1:8087 ，全部使用 goagent 代理(不建议)
+      - 设置代理为 127.0.0.1:8087 ，全部使用 goagent 代理(不建议)  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3ewkxcosfj.jpg_ie1.png)
-      - 使用 PAC 自动代理
+      - 使用 PAC 自动代理  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e3ewkyd12nj.jpg_ie2.png)
     - 宽带用户设置方法
-      - 选中自己正在使用的宽带连接之后单击"设置"
+      - 选中自己正在使用的宽带连接之后单击"设置"  
         ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6fvndhycoj20al04zmxg.jpg)
-      - 设置代理为 127.0.0.1:8087，全部使用 goagent 代理(不建议)
+      - 设置代理为 127.0.0.1:8087，全部使用 goagent 代理(不建议)  
         ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6fvnd4bicj20c5088my2.jpg)
    - 不使用时要将IE恢复无代理状态
 
