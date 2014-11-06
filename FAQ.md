@@ -15,7 +15,7 @@
 > easy_install gevent
 
 1. youtube 不能上传以及看直播？
-> 请看配置选项 wiki 介绍。https://github.com/goagent/goagent/wiki/ConfigIntroduce
+> 请看配置选项 wiki 介绍。https://github.com/goagent/goagent/blob/wiki/ConfigIntroduce.md
 
 1. 提示 HTTP Error code 错误怎么办？
 > 400: BAD Request 一般是 iplist 配置不对，尝试使用默认 iplist。
@@ -79,7 +79,7 @@
 1. 怎样设置不显示气泡提示？
 > 用 reshacker/exescope 等资源编辑工具把气泡提示字符串清空即可。
 
-1. 如何删除appengine.google.com上老的appid？
+1. 如何删除 appengine.google.com 上老的 appid ？
 > 可以的，请登录 appengine.google.com 删除。
 
 1. 如何得到 goagent 的源代码？
