@@ -3,7 +3,7 @@
 - 部署
 
   1. 申请 [Google Appengine](https://appengine.google.com) 并创建 appid。
-  1. 下载 goagent 最新版 https://goagent.github.io
+  1. 下载 goagent 最新版 https://github.com/goagent/goagent
   1. 修改 local\proxy.ini 中的 [gae] 下的 appid = 你的appid(多appid请用|隔开)
   1. 运行 uploader.bat 或 uploader.py 开始上传, 成功后即可使用了。
 
