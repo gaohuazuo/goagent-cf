@@ -12,7 +12,7 @@ handlers:
 - url: /favicon.ico
   script: gae.application
   secure: optional
-  
+
 - url: /.*
   script: legacy.application
   secure: optional
