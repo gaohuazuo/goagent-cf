@@ -67,8 +67,6 @@ def upload(dirname, appid):
         fp.write(re.sub(r'application:\s*\S+', 'application: '+appid, yaml))
     appcfg.main(['appcfg', 'rollback', dirname])
     appcfg.main(['appcfg', 'update', dirname])
-    with open(filename, 'wb') as fp:
-        fp.write(yaml)
     try:
         os.remove(appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH)
     except OSError:
