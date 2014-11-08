@@ -59,8 +59,9 @@ appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = './.appcfg_cookies'
 def upload(dirname, appid):
     assert isinstance(dirname, basestring) and isinstance(appid, basestring)
     filename = os.path.join(dirname, 'app.yaml')
-    assert os.path.isfile(filename), u'%s not exists!' % filename
-    with open(filename, 'rb') as fp:
+    template_filename = os.path.join(dirname, 'app.yaml.template')
+    assert os.path.isfile(template_filename), u'%s not exists!' % template_filename
+    with open(template_filename, 'rb') as fp:
         yaml = fp.read()
     with open(filename, 'wb') as fp:
         fp.write(re.sub(r'application:\s*\S+', 'application: '+appid, yaml))
