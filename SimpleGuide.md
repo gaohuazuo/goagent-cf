@@ -12,4 +12,4 @@
   * Windows 用户推荐使用 goagent.exe 托盘图标设置 IE 代理(对其它浏览器也有效)。
   * Chrome/Opera 请安装 [SwitchySharp](https://chrome.google.com/webstore/detail/dpplabbmogkhghncfbfdeeokoefdjegm) 插件(拖放  SwitchySharp.crx 到扩展设置)，然后导入 SwitchyOptions.bak
   * Firefox 请安装 [FoxyProxy](https://addons.mozilla.org/zh-cn/firefox/addon/foxyproxy-standard/) ，Firefox需要导入证书，方法请见 FAQ
-  * 出现连接不上的情况可以尝试使用 [GoGo Tester](https://github.com/azzvx/gogotester/raw/2.3/GoGo%20Tester/bin/Release/GoGo%20Tester.exe) 测速。
+  * 出现连接不上的情况可以尝试使用 [gscan](https://github.com/yinqiwen/gscan/raw/master/example/gscan.exe) 或 [GoGo Tester](https://github.com/azzvx/gogotester/raw/2.3/GoGo%20Tester/bin/Release/GoGo%20Tester.exe) 测速。
