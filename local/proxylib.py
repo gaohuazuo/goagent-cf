@@ -1998,7 +1998,7 @@ class MultipleConnectionMixin(object):
             logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
-                if sys.platform == 'win32':
+                if sys.platform != 'win32':
                     # Workaround for CPU 100% issue under MacOSX/Linux
                     thread.start_new_thread(create_connection, (addr, timeout, queobj))
                 else:
