@@ -1,11 +1,7 @@
-goagent 3.2.2 正式版下载 [http://git.io/goa](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
-
-## 公告
-目前 pagespeed 选项已经失效，请关闭 [gae]pagespeed 以后使用。
+goagent 3.2.3 正式版下载 [http://git.io/goa](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
 
 ## 最近更新
-* [1104 否] 3.2.2 正式版， 优化 iplist 筛选算法，降低连接数要求；修复根证书不能导入的 bug。
-* [1018 否] 3.2.1 正式版， bug 修复，删除默认证书。
+* [1122 否] 3.2.3 正式版，修复 MacOSX/Linux 平台 CPU 100% 的问题；托盘图标支持设置ADSL拨号网络代理(注意：拨号网络请使用英文名称）。
 
 ## 讨论区
 * https://code.google.com/p/goagent/issues/list

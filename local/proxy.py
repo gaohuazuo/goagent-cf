@@ -44,8 +44,16 @@
 #      zwhfly            <zwhfly@163.com>
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
+#      gwjwin            <gwjwin@sina.com>
+#      Jobin             <1149225004@qq.com>
+#      Zhuhao Wang       <zhuhaow@gmail.com>
+#      YFdyh000          <yfdyh000@gmail.com>
+#      zzq1015           <zzq1015@users.noreply.github.com>
+#      Zhengfa Dang      <zfdang@users.noreply.github.com>
+#      haosdent          <haosdent@gmail.com>
+#      xk liu            <lxk1012@gmail.com>
 
-__version__ = '3.2.2'
+__version__ = '3.2.3'
 
 import os
 import sys
