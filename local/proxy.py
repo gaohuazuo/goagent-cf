@@ -196,6 +196,7 @@ from proxylib import spawn_later
 from proxylib import SSLConnection
 from proxylib import StaticFileFilter
 from proxylib import StripPlugin
+from proxylib import StripPluginEx
 from proxylib import URLRewriteFilter
 from proxylib import UserAgentFilter
 from proxylib import XORCipher
@@ -1614,7 +1615,6 @@ def pre_start():
     RangeFetch.waitsize = common.AUTORANGE_WAITSIZE
     if True:
         GAEProxyHandler.handler_filters.insert(0, AutoRangeFilter(common.AUTORANGE_HOSTS, common.AUTORANGE_ENDSWITH, common.AUTORANGE_NOENDSWITH, common.AUTORANGE_MAXSIZE))
-        #PHPProxyHandler.handler_filters.insert(0, AutoRangeFilter(common.AUTORANGE_HOSTS, common.AUTORANGE_ENDSWITH, common.AUTORANGE_NOENDSWITH, common.AUTORANGE_MAXSIZE))
     if common.GAE_REGIONS:
         GAEProxyHandler.handler_filters.insert(0, DirectRegionFilter(common.GAE_REGIONS))
     if common.HOST_MAP or common.HOST_POSTFIX_MAP or common.HOSTPORT_MAP or common.HOSTPORT_POSTFIX_MAP or common.URLRE_MAP:
@@ -1673,6 +1673,8 @@ def main():
         HandlerClass = GAEProxyHandler if not common.PROXY_ENABLE else ProxyGAEProxyHandler
         if common.PHP_ENABLE:
             HandlerClass.handler_plugins['php'] = php_server.RequestHandlerClass.handler_plugins['php']
+        if os.name == 'nt':
+            HandlerClass.handler_plugins['strip'] = StripPluginEx()
         gae_server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), HandlerClass)
         gae_server.serve_forever()
     else:
