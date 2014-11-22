@@ -147,6 +147,7 @@ class CertUtil(object):
     ca_keyfile = 'CA.crt'
     ca_thumbprint = ''
     ca_certdir = 'certs'
+    ca_digest = 'sha1' if sys.platform == 'win32' and sys.getwindowsversion() < (6,) else 'sha256'
     ca_lock = threading.Lock()
 
     @staticmethod
@@ -162,7 +163,7 @@ class CertUtil(object):
         subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
         subj.commonName = '%s CA' % CertUtil.ca_vendor
         req.set_pubkey(key)
-        req.sign(key, 'sha1')
+        req.sign(key, CertUtil.ca_digest)
         ca = OpenSSL.crypto.X509()
         ca.set_serial_number(0)
         ca.gmtime_adj_notBefore(0)
@@ -170,7 +171,7 @@ class CertUtil(object):
         ca.set_issuer(req.get_subject())
         ca.set_subject(req.get_subject())
         ca.set_pubkey(req.get_pubkey())
-        ca.sign(key, 'sha1')
+        ca.sign(key, CertUtil.ca_digest)
         return key, ca
 
     @staticmethod
@@ -212,7 +213,7 @@ class CertUtil(object):
             sans = [commonname] + [x for x in sans if x != commonname]
         #req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans)).encode()])
         req.set_pubkey(pkey)
-        req.sign(pkey, 'sha1')
+        req.sign(pkey, CertUtil.ca_digest)
 
         cert = OpenSSL.crypto.X509()
         cert.set_version(2)
@@ -230,7 +231,7 @@ class CertUtil(object):
         else:
             sans = [commonname] + [s for s in sans if s != commonname]
         #cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
-        cert.sign(key, 'sha1')
+        cert.sign(key, CertUtil.ca_digest)
 
         certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         with open(certfile, 'wb') as fp:
@@ -340,7 +341,7 @@ class CertUtil(object):
                     logging.warning('CertUtil.remove_ca failed: %r', e)
             CertUtil.dump_ca()
         with open(capath, 'rb') as fp:
-            CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest('sha1')
+            CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest(CertUtil.ca_digest)
         #Check Certs
         certfiles = glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt')
         if certfiles:
