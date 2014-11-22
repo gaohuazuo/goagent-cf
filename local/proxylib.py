@@ -961,30 +961,17 @@ class StripPlugin(BaseFetchPlugin):
     """strip fetch plugin"""
 
     def __init__(self, ssl_version='SSLv23', ciphers='ALL:!aNULL:!eNULL', cache_size=128, session_cache=True):
-        self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
+        self.ssl_method = getattr(ssl, 'PROTOCOL_%s' % ssl_version)
         self.ciphers = ciphers
-        self.ssl_context_cache = LRUCache(cache_size*2)
-        self.ssl_session_cache = session_cache
 
-    def get_ssl_context_by_hostname(self, hostname):
-        try:
-            return self.ssl_context_cache[hostname]
-        except LookupError:
-            context = OpenSSL.SSL.Context(self.ssl_method)
-            certfile = CertUtil.get_cert(hostname)
-            if certfile in self.ssl_context_cache:
-                context = self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile]
-                return context
-            with open(certfile, 'rb') as fp:
-                pem = fp.read()
-                context.use_certificate(OpenSSL.crypto.load_certificate(OpenSSL.SSL.FILETYPE_PEM, pem))
-                context.use_privatekey(OpenSSL.crypto.load_privatekey(OpenSSL.SSL.FILETYPE_PEM, pem))
-            if self.ciphers:
-                context.set_cipher_list(self.ciphers)
-            self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile] = context
-            if self.ssl_session_cache:
-                openssl_set_session_cache_mode(context, 'server')
-            return context
+    def do_ssl_handshake(self, handler):
+        "do_ssl_handshake with ssl"
+        certfile = CertUtil.get_cert(handler.host)
+        ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True, ssl_version=self.ssl_method, ciphers=self.ciphers)
+        handler.connection = ssl_sock
+        handler.rfile = handler.connection.makefile('rb', handler.bufsize)
+        handler.wfile = handler.connection.makefile('wb', 0)
+        handler.scheme = 'https'
 
     def handle(self, handler, do_ssl_handshake=True):
         """strip connect"""
@@ -993,23 +980,11 @@ class StripPlugin(BaseFetchPlugin):
         handler.end_headers()
         if do_ssl_handshake:
             try:
-                # certfile = CertUtil.get_cert(handler.host)
-                # ssl_sock = ssl.wrap_socket(handler.connection, keyfile=certfile, certfile=certfile, server_side=True, ciphers=self.ciphers)
-                ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
-                ssl_sock.set_accept_state()
-                ssl_sock.do_handshake()
-            except OpenSSL.SSL.SysCallError as e:
-                if e[0] == -1 and 'Unexpected EOF' in e[1]:
-                    return
-                raise
+                self.do_ssl_handshake(handler)
             except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
-                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET) or (e[0] == -1 and 'Unexpected EOF' in e[1]):
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
                 return
-            handler.connection = ssl_sock
-            handler.rfile = handler.connection.makefile('rb', handler.bufsize)
-            handler.wfile = handler.connection.makefile('wb', 0)
-            handler.scheme = 'https'
         try:
             handler.raw_requestline = handler.rfile.readline(65537)
             if len(handler.raw_requestline) > 65536:
@@ -1037,6 +1012,45 @@ class StripPlugin(BaseFetchPlugin):
         except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
+
+class StripPluginEx(StripPlugin):
+    """strip fetch plugin"""
+
+    def __init__(self, ssl_version='SSLv23', ciphers='ALL:!aNULL:!eNULL', cache_size=128, session_cache=True):
+        self.ssl_method = getattr(OpenSSL.SSL, '%s_METHOD' % ssl_version)
+        self.ciphers = ciphers
+        self.ssl_context_cache = LRUCache(cache_size*2)
+        self.ssl_session_cache = session_cache
+
+    def get_ssl_context_by_hostname(self, hostname):
+        try:
+            return self.ssl_context_cache[hostname]
+        except LookupError:
+            context = OpenSSL.SSL.Context(self.ssl_method)
+            certfile = CertUtil.get_cert(hostname)
+            if certfile in self.ssl_context_cache:
+                context = self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile]
+                return context
+            with open(certfile, 'rb') as fp:
+                pem = fp.read()
+                context.use_certificate(OpenSSL.crypto.load_certificate(OpenSSL.SSL.FILETYPE_PEM, pem))
+                context.use_privatekey(OpenSSL.crypto.load_privatekey(OpenSSL.SSL.FILETYPE_PEM, pem))
+            if self.ciphers:
+                context.set_cipher_list(self.ciphers)
+            self.ssl_context_cache[hostname] = self.ssl_context_cache[certfile] = context
+            if self.ssl_session_cache:
+                openssl_set_session_cache_mode(context, 'server')
+            return context
+
+    def do_ssl_handshake(self, handler):
+        "do_ssl_handshake with OpenSSL"
+        ssl_sock = SSLConnection(self.get_ssl_context_by_hostname(handler.host), handler.connection)
+        ssl_sock.set_accept_state()
+        ssl_sock.do_handshake()
+        handler.connection = ssl_sock
+        handler.rfile = handler.connection.makefile('rb', handler.bufsize)
+        handler.wfile = handler.connection.makefile('wb', 0)
+        handler.scheme = 'https'
 
 
 class DirectFetchPlugin(BaseFetchPlugin):
@@ -1984,11 +1998,11 @@ class MultipleConnectionMixin(object):
             logging.debug('%s good_ipaddrs=%d, unknown_ipaddrs=%r, bad_ipaddrs=%r', cache_key, len(good_ipaddrs), len(unknown_ipaddrs), len(bad_ipaddrs))
             queobj = Queue.Queue()
             for addr in addrs:
-                if sys.platform != 'darwin':
-                    thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
-                else:
-                    # Workaround for CPU 100% issue under MacOSX
+                if sys.platform == 'win32':
+                    # Workaround for CPU 100% issue under MacOSX/Linux
                     thread.start_new_thread(create_connection, (addr, timeout, queobj))
+                else:
+                    thread.start_new_thread(create_connection_withopenssl, (addr, timeout, queobj))
             errors = []
             for i in range(len(addrs)):
                 sock = queobj.get()
