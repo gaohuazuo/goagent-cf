@@ -470,7 +470,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                 with gevent.Timeout(self.connect_timeout, False):
                     data = response.read(bufsize)
                 if data is None:
-                    logging.warning('response.read(%r) %r timeout', bufsize, url)
+                    logging.warning('GAE response.read(%r) %r timeout', bufsize, url)
                     if response.getheader('Accept-Ranges', '') == 'bytes' and not urlparse.urlparse(url).query:
                         return self.handle(handler, rescue_bytes=written)
                     handler.close_connection = True

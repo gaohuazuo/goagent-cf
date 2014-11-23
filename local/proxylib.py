@@ -1066,6 +1066,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
             return self.handle_connect(handler, kwargs)
 
     def handle_method(self, handler, kwargs):
+        rescue_bytes = int(kwargs.pop('rescue_bytes', 0))
         method = handler.command
         if handler.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = handler.path
@@ -1075,19 +1076,33 @@ class DirectFetchPlugin(BaseFetchPlugin):
         body = handler.body
         response = None
         try:
+            if rescue_bytes:
+                headers['Range'] = 'bytes=%d-' % rescue_bytes
             response = handler.create_http_request(method, url, headers, body, timeout=self.connect_timeout, read_timeout=self.read_timeout, **kwargs)
             logging.info('%s "DIRECT %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
-            handler.send_response(response.status)
-            for key, value in response.getheaders():
-                handler.send_header(key, value)
-            handler.end_headers()
+            if not rescue_bytes:
+                handler.send_response(response.status)
+                for key, value in response.getheaders():
+                    handler.send_header(key, value)
+                handler.end_headers()
             if handler.command == 'HEAD' or response.status in (204, 304):
                 response.close()
                 return
             need_chunked = 'Transfer-Encoding' in response_headers
+            bufsize = 8192
+            written = 0
             while True:
-                data = response.read(8192)
+                data = None
+                with gevent.Timeout(self.connect_timeout, False):
+                    data = response.read(bufsize)
+                if data is None:
+                    logging.warning('DIRECT response.read(%r) %r timeout', bufsize, url)
+                    if response.getheader('Accept-Ranges', '') == 'bytes' and not urlparse.urlparse(url).query:
+                        kwargs['rescue_bytes'] = written
+                        return self.handle(handler, **kwargs)
+                    handler.close_connection = True
+                    break
                 if not data:
                     if need_chunked:
                         handler.wfile.write('0\r\n\r\n')
@@ -1095,6 +1110,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
                 if need_chunked:
                     handler.wfile.write('%x\r\n' % len(data))
                 handler.wfile.write(data)
+                written += len(data)
                 if need_chunked:
                     handler.wfile.write('\r\n')
                 del data
