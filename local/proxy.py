@@ -1264,7 +1264,6 @@ class Common(object):
         self.GAE_REGIONS = set(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
         self.GAE_SSLVERSION = self.CONFIG.get('gae', 'sslversion')
         self.GAE_PAGESPEED = self.CONFIG.getint('gae', 'pagespeed') if self.CONFIG.has_option('gae', 'pagespeed') else 0
-        self.GAE_MAXSIZE = self.CONFIG.getint('gae', 'maxsize')
 
         if self.GAE_IPV6:
             sock = None
