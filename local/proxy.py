@@ -407,6 +407,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
 
     def handle(self, handler, **kwargs):
         assert handler.command != 'CONNECT'
+        rescue_bytes = int(kwargs.pop('rescue_bytes', 0))
         method = handler.command
         headers = dict((k.title(), v) for k, v in handler.headers.items())
         body = handler.body
@@ -420,6 +421,8 @@ class GAEFetchPlugin(BaseFetchPlugin):
         response = None
         for i in xrange(self.max_retry):
             try:
+                if rescue_bytes:
+                    headers['Range'] = 'bytes=%d-' % rescue_bytes
                 response = self.fetch(handler, method, url, headers, body, self.connect_timeout)
                 if response.app_status < 500:
                     break
@@ -449,27 +452,32 @@ class GAEFetchPlugin(BaseFetchPlugin):
             return handler.handler_plugins['mock'].handle(handler, status, headers, content)
         logging.info('%s "GAE %s %s %s" %s %s', handler.address_string(), handler.command, handler.path, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
         try:
-            if response.status == 206:
+            if response.status == 206 and not rescue_bytes:
                 fetchservers = ['%s://%s.appspot.com%s' % (self.mode, x, self.path) for x in self.appids]
                 return RangeFetch(handler, self, response, fetchservers).fetch()
             handler.close_connection = not response.getheader('Content-Length')
-            handler.send_response(response.status)
-            for key, value in response.getheaders():
-                if key.title() == 'Transfer-Encoding':
-                    continue
-                handler.send_header(key, value)
-            handler.end_headers()
+            if not rescue_bytes:
+                handler.send_response(response.status)
+                for key, value in response.getheaders():
+                    if key.title() == 'Transfer-Encoding':
+                        continue
+                    handler.send_header(key, value)
+                handler.end_headers()
             bufsize = 8192
+            written = 0
             while True:
                 data = None
                 with gevent.Timeout(self.connect_timeout, False):
                     data = response.read(bufsize)
                 if data is None:
                     logging.warning('response.read(%r) %r timeout', bufsize, url)
+                    if response.getheader('Accept-Ranges', '') == 'bytes' and not urlparse.urlparse(url).query:
+                        return self.handle(handler, rescue_bytes=written)
                     handler.close_connection = True
                     break
                 if data:
                     handler.wfile.write(data)
+                    written += len(data)
                 if not data:
                     cache_sock = getattr(response, 'cache_sock', None)
                     if cache_sock:
