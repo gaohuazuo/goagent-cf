@@ -392,7 +392,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
     connect_timeout = 4
     max_retry = 2
 
-    def __init__(self, appids, password, path, mode, cachesock, keepalive, obfuscate, pagespeed, validate, options, maxsize):
+    def __init__(self, appids, password, path, mode, cachesock, keepalive, obfuscate, pagespeed, validate, options):
         BaseFetchPlugin.__init__(self)
         self.appids = appids
         self.password = password
@@ -404,7 +404,6 @@ class GAEFetchPlugin(BaseFetchPlugin):
         self.pagespeed = pagespeed
         self.validate = validate
         self.options = options
-        self.maxsize = maxsize
 
     def handle(self, handler, **kwargs):
         assert handler.command != 'CONNECT'
@@ -501,8 +500,6 @@ class GAEFetchPlugin(BaseFetchPlugin):
             kwargs['options'] = self.options
         if self.validate:
             kwargs['validate'] = self.validate
-        if self.maxsize:
-            kwargs['maxsize'] = self.maxsize
         payload = '%s %s %s\r\n' % (method, url, handler.request_version)
         payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items() if k not in handler.skip_headers)
         payload += ''.join('X-URLFETCH-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
@@ -765,7 +762,7 @@ class GAEProxyHandler(MultipleConnectionMixin, SimpleProxyHandler):
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
         random.shuffle(common.GAE_APPIDS)
-        self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_CACHESOCK, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS, common.GAE_MAXSIZE)
+        self.__class__.handler_plugins['gae'] = GAEFetchPlugin(common.GAE_APPIDS, common.GAE_PASSWORD, common.GAE_PATH, common.GAE_MODE, common.GAE_CACHESOCK, common.GAE_KEEPALIVE, common.GAE_OBFUSCATE, common.GAE_PAGESPEED, common.GAE_VALIDATE, common.GAE_OPTIONS)
         try:
             self.__class__.hosts_filter = next(x for x in self.__class__.handler_filters if isinstance(x, HostsFilter))
         except StopIteration:
