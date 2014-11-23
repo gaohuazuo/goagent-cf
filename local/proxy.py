@@ -464,7 +464,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
                     handler.send_header(key, value)
                 handler.end_headers()
             bufsize = 8192
-            written = 0
+            written = rescue_bytes
             while True:
                 data = None
                 with gevent.Timeout(self.connect_timeout, False):

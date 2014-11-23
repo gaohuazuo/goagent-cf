@@ -1091,7 +1091,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
                 return
             need_chunked = 'Transfer-Encoding' in response_headers
             bufsize = 8192
-            written = 0
+            written = rescue_bytes
             while True:
                 data = None
                 with gevent.Timeout(self.connect_timeout, False):
