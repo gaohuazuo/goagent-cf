@@ -71,14 +71,14 @@ class VPSProxyHandler(AdvancedProxyHandler):
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
-        logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
+        logging.info('resolve common.IPLIST_ALIAS names=%s to iplist', list(common.IPLIST_ALIAS))
         common.resolve_iplist()
 
     def gethostbyname2(self, hostname):
         for postfix in ('.appspot.com', '.googleusercontent.com'):
             if hostname.endswith(postfix):
                 host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP[postfix]
-                return common.IPLIST_MAP.get(host) or host.split('|')
+                return common.IPLIST_ALIAS.get(host) or host.split('|')
         return AdvancedProxyHandler.gethostbyname2(self, hostname)
 
     def handle_urlfetch_error(self, fetchserver, response):
