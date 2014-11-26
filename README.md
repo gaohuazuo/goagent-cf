@@ -1,7 +1,7 @@
 goagent 3.2.3 正式版下载 [http://git.io/goa](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
 
-## 最近更新
-* [1122 否] 3.2.3 正式版，修复 MacOSX/Linux 平台 CPU 100% 的问题；托盘图标支持设置ADSL拨号网络代理(注意：拨号网络请使用英文名称）。
+## 公告
+× 从 3.2.0 以下版本升级的用户，请务必重新上传 GAE/PHP 服务端。
 
 ## 讨论区
 * https://code.google.com/p/goagent/issues/list
