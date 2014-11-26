@@ -8,8 +8,8 @@
 > 首先请更新客户端和服务端到最新版(见首页)，如果还有问题的话请提出 issue 。
 > 提 issue 前建议先搜索下看是否是重复的问题。虽然我们可能顾不上回答，但是我们保证每个issue都会看的并尝试解决的。
 
-1. 用 goagent 访问twitter ,自动跳转为 mobile.twitter.com 并返回 403 Forbidden。
-> 检查查自己的 id 是不是以 android 开头或者 apple, iphone 啥的开头的了
+1. 用 goagent 访问twitter，自动跳转为 mobile.twitter.com 并返回 403 Forbidden。
+> 检查自己的 id 是不是包含 android 或者 apple, iphone, mobile 啥的。
 
 1. 在 Linux/Mac 下如何安装 gevent?
 > easy_install gevent
@@ -20,13 +20,14 @@
 1. 提示 HTTP Error code 错误怎么办？
 > 400: BAD Request 一般是 iplist 配置不对，尝试使用默认 iplist。
 > 401: Unauthorized 一般是你处于内网环境中，需要设置 proxy.ini 里面的 proxy 段落。
+> 403: Forbidden 先清空Hosts文件，然后删了proxy.ini [iplist]中的google\_cn=*，并将[profile]的google\_cn改为google\_hk，[iplist]里google\_hk=后面填找到的IP。
 > 404: Not Found 一般是 proxy.ini 里面 appid 没有填对，或者服务端没有部署成功。
 > 500: 一般是 server/client 版本不匹配，可能是没有上传成功，使用你正在使用的版本重新上传。
 > 503: Service Unavailable 一般是流量用完了，请更换appid。
 
 1. GAE 免费流量配额是多少？
 > 每个谷歌帐号可以在 GAE 创建10个 appid，每个 appid 每天1G免费流量，urlfetch 每分钟 22M, 传入传出带宽每分钟 56M，GoAgent 使用 urlfetch，故受每分钟 22M 的限制。
-> 流量重置时间为[加州时间](http://zh.thetimenow.com/united_states/california/san_francisco)的午夜，一般即北京时间 16 点。
+> 流量重置时间为[加州时间](http://zh.thetimenow.com/united_states/california/san_francisco)的午夜，夏时制时为北京时间15点，否则为16点。
 
 1. uploader 上传失败？
 > 404: Not Found 对应的 appid 没有创建或者 appid 与 Gmail 账户不对应。
@@ -62,7 +63,7 @@
 > 双击 addto-startup.js 即可。
 
 1. goagent 支持 IPv6 网络吗？
-> 支持的。[gae]ipv6 = 1 即可。
+> 支持的，[gae]ipv6 = 1 即可。但是代理后，对网站显示的IP仍是IPv4。
 
 1. 为什么 goagent 第一次运行需要管理员权限？
 > 因为 goagent 会尝试向系统导入 IE/Chrome 的证书，这需要管理员权限。
@@ -95,7 +96,8 @@
 > 使用 goagent-uv.exe 启动。
 
 1. 为什么使用 goagent 后访问 google.com 仍然跳转到 google.com.hk?
-> 先访问 https://www.google.com/ncr 一下即可。
+> 你访问Google的IP还是中国的，[profile]里删掉.google.com=那行即可，但是搜索时可能会跳出验证码。
+> 如果你想用自己IP上Google，但不想被跳转，先访问 https://www.google.com/ncr 一下即可。
 
 1. 出现`Address already in use` 错误。
 > 原因：可能是goagent已经在运行或者端口被其他软件占用，比如搜狗浏览器开启全网加速会使用8087端口，比如旧版goagent加入开机启动没有删除、旧版已经在运行。
