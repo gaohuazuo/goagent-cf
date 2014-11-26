@@ -982,7 +982,7 @@ class StripPlugin(BaseFetchPlugin):
             try:
                 self.do_ssl_handshake(handler)
             except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
-                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET) or (e[0] == -1 and 'Unexpected EOF' in e[1]):
+                if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET) or e.args[0] == 'Unexpected EOF':
                     logging.exception('ssl.wrap_socket(connection=%r) failed: %s', handler.connection, e)
                 return
         try:
