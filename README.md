@@ -1,7 +1,7 @@
 goagent 3.2.3 正式版下载 [http://git.io/goa](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
 
 ## 公告
-× 从 3.2.0 以下版本升级的用户，请务必重新上传 GAE/PHP 服务端。
+* 从 3.2.0 以下版本升级的用户，请务必重新上传 GAE/PHP 服务端。
 
 ## 讨论区
 * https://code.google.com/p/goagent/issues/list
