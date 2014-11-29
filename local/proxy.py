@@ -695,7 +695,11 @@ class WithGAEFilter(BaseProxyHandlerFilter):
         if handler.host in self.withgae_sites or handler.host.endswith(self.withgae_sites_postfix):
             plugin = 'gae'
         elif handler.host in self.withphp_sites or handler.host.endswith(self.withphp_sites_postfix):
-            plugin = 'php'
+            if 'php' not in handler.handler_plugins:
+                logging.warning('handler=%s does not contains php plugin, fallback to gae plugin!', handler)
+                plugin = 'gae'
+            else:
+                plugin = 'php'
         elif handler.host in self.withvps_sites or handler.host.endswith(self.withvps_sites_postfix):
             plugin = 'vps'
         if plugin:

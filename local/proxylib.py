@@ -171,7 +171,7 @@ class CertUtil(object):
         ca.set_issuer(req.get_subject())
         ca.set_subject(req.get_subject())
         ca.set_pubkey(req.get_pubkey())
-        ca.sign(key, CertUtil.ca_digest)
+        ca.sign(key, 'sha1')
         return key, ca
 
     @staticmethod
@@ -341,7 +341,7 @@ class CertUtil(object):
                     logging.warning('CertUtil.remove_ca failed: %r', e)
             CertUtil.dump_ca()
         with open(capath, 'rb') as fp:
-            CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest(CertUtil.ca_digest)
+            CertUtil.ca_thumbprint = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read()).digest('sha1')
         #Check Certs
         certfiles = glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt')
         if certfiles:
