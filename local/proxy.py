@@ -1283,7 +1283,7 @@ class Common(object):
                     sock.close()
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
-            self.CONFIG.set('profile', '.' + os.environ['USERDNSDOMAIN'], '')
+            self.CONFIG.set('profile', '.' + os.environ['USERDNSDOMAIN'], 'direct')
 
         withgae_sites = []
         withphp_sites = []
