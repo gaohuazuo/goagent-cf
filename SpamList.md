@@ -21,7 +21,7 @@
 |Cocacola.Sky@gmail.com | 反串五，疑似小号。|
 |satxuxiaofei@gmail.com | 清华大学电子系五毛，喜好刷屏+辱骂。|
 |41makino@gmail.com | 自干五，声称 phuslu 是美分版主 |
-|giftmoneyplus@gmail.com | 41makino 小号 |
+|giftmoneyplus@gmail.com | 41makino 小号，明确表态支持“互联网封禁” |
 |xiaobaiyang258@gmail.com | 脑残五，使用反占中和侮辱性词汇刷屏 |
 
 
