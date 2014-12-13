@@ -1383,6 +1383,7 @@ class AutoRangeFilter(BaseProxyHandlerFilter):
 class StaticFileFilter(BaseProxyHandlerFilter):
     """static file filter"""
     index_file = 'index.html'
+    allow_exts = ['.crt', '.pac', '.crx', '.bak', '.htm', '.html', '.js', '.css', '.png', '.gif', '.jpg']
 
     def format_index_html(self, dirname):
         INDEX_TEMPLATE = u'''
@@ -1401,6 +1402,8 @@ class StaticFileFilter(BaseProxyHandlerFilter):
         if not isinstance(dirname, unicode):
             dirname = dirname.decode(sys.getfilesystemencoding())
         for name in os.listdir(dirname):
+            if os.path.splitext(name)[1] not in self.allow_exts:
+                continue
             fullname = os.path.join(dirname, name)
             suffix = u'/' if os.path.isdir(fullname) else u''
             html += u'<li><a href="%s%s">%s%s</a>\r\n' % (name, suffix, name, suffix)
@@ -1410,6 +1413,7 @@ class StaticFileFilter(BaseProxyHandlerFilter):
         path = urlparse.urlsplit(handler.path).path
         if path.startswith('/'):
             path = urllib.unquote_plus(path.lstrip('/') or '.').decode('utf8')
+            path = '/'.join(x for x in path.split('/') if x != '..')
             if os.path.isdir(path):
                 index_file = os.path.join(path, self.index_file)
                 if not os.path.isfile(index_file):
@@ -1419,6 +1423,8 @@ class StaticFileFilter(BaseProxyHandlerFilter):
                 else:
                     path = index_file
             if os.path.isfile(path):
+                if os.path.splitext(path)[1] not in self.allow_exts:
+                    return 'mock', {'status': 403, 'body': '403 Fobidon'}
                 content_type = 'application/octet-stream'
                 try:
                     import mimetypes
