@@ -1835,6 +1835,7 @@ class AdvancedNet2(Net2):
                 # reset a large and random timeout to the ipaddr
                 self.ssl_connection_time[ipaddr] = self.connect_timeout + random.random()
                 # add to bad ipaddrs dict
+                logging.warn('bad IP: %s (%r)', ipaddr, e)
                 if ipaddr not in self.ssl_connection_bad_ipaddrs:
                     self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
                 # remove from good/unknown ipaddrs dict
@@ -1923,6 +1924,7 @@ class AdvancedNet2(Net2):
                 # reset a large and random timeout to the ipaddr
                 self.ssl_connection_time[ipaddr] = self.connect_timeout + random.random()
                 # add to bad ipaddrs dict
+                logging.warn('bad IP: %s (%r)', ipaddr, e)
                 if ipaddr not in self.ssl_connection_bad_ipaddrs:
                     self.ssl_connection_bad_ipaddrs[ipaddr] = time.time()
                 # remove from good/unknown ipaddrs dict
