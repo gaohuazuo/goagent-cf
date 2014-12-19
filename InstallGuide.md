@@ -42,14 +42,14 @@
     - 设置浏览器或其他需要代理的程序代理地址为 127.0.0.1:8087
     - 注意：使用过程中要一直运行 goagent.exe/proxy.py
     - 代理地址 127.0.0.1:8087；如需使用 PAC，设置pac地址为 <http://127.0.0.1:8086/proxy.pac>
-    - 也可以配合 SwitchySharp/FoxyProxy 等浏览器扩展 (SwitchySharp 用户可从 local 文件夹中的 SwitchyOptions.bak 文件导入配置)
+    - 也可以配合 SwitchyOmega/FoxyProxy 等浏览器扩展 (SwitchyOmega 用户可从 local 文件夹中的 SwitchyOptions.bak 文件导入配置)
   1. 导入证书
     - IE/Chrome：使用管理员身份运行 goagent.exe 会自动向系统导入 IE/Chrome 的证书，你也可以双击 local 文件夹中的 CA.crt 安装证书(需要安装到 "受信任的根证书颁发机构" )；  
     ![运行客户端](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6mc176ngnj20bn0dit9l.jpg)  
     ![运行客户端](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e6mc184ah3j20e00e6wg1.jpg)
     - 下一步 -> 完成 -> 确定
     - Firefox：需要单独导入证书，打开FireFox?->选项->高级->加密->查看证书->证书机构->导入证书, 选择 local\CA.crt, 勾选所有项，导入；
-    - opera：导入证书方法：首选项→高级→安全性→管理证书→证书颁发机构->导入->选择 local\CA.crt文件->依次确认
+    - Opera：导入证书方法：首选项→高级→安全性→管理证书→证书颁发机构->导入->选择 local\CA.crt文件->依次确认
 
 ##浏览器设置方法
   1. 使用 GoAgent 自带代理设置功能
@@ -58,25 +58,25 @@
     - 禁用代理 什么也不做，需要用户自己手动为软件设置代理
     - <http://127.0.0.1:8086/proxy.pac> 使用自带的PAC自动判断是否使用代理
     - <127.0.0.1:8087> 全部使用 GoAgent 代理
-  1. 谷歌 Chrome 配合 SwitchySharp 扩展
+  1. 谷歌 Chrome 配合 SwitchyOmega 扩展
     - 安装扩展
-    - 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，将 local 文件夹中的 SwitchySharp.crx 拖拽到该页面之后点击确定即可安装，扩展也可以从 Chrome 应用商店获得<https://chrome.google.com/webstore/detail/proxy-switchysharp/dpplabbmogkhghncfbfdeeokoefdjegm>  
+    - 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，将 local 文件夹中的 SwitchyOmega.crx 拖拽到该页面之后点击确定即可安装，扩展也可以从 Chrome 应用商店获得<https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif>  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e3hhmzjy1zj.jpg_install_Proxy_Switchy_Sharp.png)
     - 导入设置
-      - 点击 SwitchySharp 图标->选项->导入/导出  
+      - 点击 SwitchyOmega 图标->导入/导出  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887jw1e2s44kpzqyj.jpg_bak.png)
       - 浏览到 SwitchyOptions.bak，点击确定导入设置
       - 更新自动切换规则(如果遇到无法更新规则列表，可以先运行 goagent ，并把浏览器代理设置为 GoAgent 模式再更新规则，不更新规则只会影响自动切换模式，不会影响其他模式的使用，若确实无法更新也可不更新，直接使用 PAC 模式即可)
-      - 在扩展设置页点击 "切换规则" ，点击 "立即更新列表" ，最后点击 "保存" 。  
+      - 在扩展设置页点击 "自动切换" ，点击 "立即更新情景模式" ，最后点击 "应用选项" 。  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3tcf8lij.jpg_getrules.png)
-    - 单击地址栏右侧Proxy  SwitchySharp图标即可进行模式选择  
+    - 单击地址栏右侧 Proxy SwitchyOmega 图标即可进行模式选择  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t6x2ivj.jpg_changemode.png)
-      - GoAgent 模式  除匹配 proxy.ini 中 profile 的直连外，其他全部通过GAE
+      - GoAgent 模式 除匹配 proxy.ini 中 profile 的直连外，其他全部通过 GAE
       - GoAgent PAAS模式 全部通过PAAS
       - GoAgent PAC模式 根据 GoAgent 自带的 PAC 文件自动判断是否经过代理
       - 自动切换模式 根据切换规则自动选择是否进行代理，并根据所设情景模式自动选择使用何种代理
       - 遇到规则中没有的，可以使用扩展的 "新建规则" 按钮自行添加，选情景模式为 "GoAgent" ，使用此模式可以方便的定制自己的代理切换规则
-      - 这个扩展偶尔会出BUG，出现设置无误但浏览器提示错误130无法连接到代理服务器，可以将自己的设置导出之后卸载重装
+      - 这个扩展偶尔会出 BUG，出现设置无误但浏览器提示错误 130 无法连接到代理服务器，可以将自己的设置导出之后卸载重装
       - 如果遇到无法更新规则列表，可以先运行 goagent，并把浏览器代理设置为 GoAgent 模式再更新规则，不更新规则只会影响自动切换模式，不会影响其他模式的使用，若确实无法更新也可不更新，直接把扩展设置为 GoAgent PAC 模式即可
   1. Firefox 配合 FoxyProxy 扩展
     - 安装扩展 <https://addons.mozilla.org/zh-cn/firefox/addon/foxyproxy-standard/>
@@ -134,6 +134,6 @@
 
 ##关于软件更新
   - 更新历史中带有[是]则需要重新上传，否则不用重新上传。注意：是否需要重新上传是相对于前一版的，若你之前版本与当前版本之间某一版或多版带有[是]仍然需要重新上传。
-  - appid 并不绑定任何客户端，如果本次更新无需重新上传，只需修改 proxy.ini 中的 appid 即可使用。同样，你也可以把 appid 共享给朋友，或者在自己其他机器上使用，一个 appid 可以多人多机器同时使用，在无需更新服务端的情况下，只需成功上传一次即可。在没有设定密码的情况下，只需要知道 appid 就可以使用你的 appid 的流量，为防止被盗用可以[加上密码](https://goagent.github.io/?/wiki/SetPassword.md)。
+  - appid 并不绑定任何客户端，如果本次更新无需重新上传，只需修改 proxy.ini 中的 appid 即可使用。同样，你也可以把 appid 共享给朋友，或者在自己其他机器上使用，一个 appid 可以多人多机器同时使用，在无需更新服务端的情况下，只需成功上传一次即可。在没有设定密码的情况下，只需要知道 appid 就可以使用你的 appid 的流量，为防止被盗用可以[加上密码](https://github.com/goagent/goagent/blob/wiki/SetPassword.md)。
   - goagent 每一版下载的都是全部文件，你可以选择覆盖原文件或者将新版放另一个文件夹，旧版你可以选择留存或者删除，修改新版 proxy.ini 中相关设置即可运行。如果旧版添加了开机启动，需要将旧开机启动删除。如果旧版已经在运行，需先将旧版关闭。
-  - 如果之前版本没有ssl错误，使用新版出现 ssl 错误可以把原来的 CA.crt 和 certs 文件夹内的文件覆盖当前的这些文件。或者将CA.crt 和 certs 文件夹删除，同时删除浏览器中所有goagent ca 的证书，再重启 goagent，会生成新证书，重启浏览器再导入新证书即可。浏览器证书中只能有一个 goagent ca 的证书。
+  - 如果之前版本没有ssl错误，使用新版出现 ssl 错误可以把原来的 CA.crt 和 certs 文件夹内的文件覆盖当前的这些文件。或者将 CA.crt 和 certs 文件夹删除，同时删除浏览器中所有goagent ca 的证书，再重启 goagent，会生成新证书，重启浏览器再导入新证书即可。浏览器证书中只能有一个 goagent ca 的证书。

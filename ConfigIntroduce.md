@@ -13,7 +13,7 @@
     #是否显示详细debug信息
     debuginfo = 0
     
-    #GAE服务端的配置
+    #GAE 服务端的配置
     [gae]
     #是否启用 GAE 服务端。
     enable = 1
@@ -23,11 +23,11 @@
     password = 123456
     #服务端路径,一般不用修改,如果不懂也不要修改.
     path = /_gh/
-    #使用http还是https(SSL加密传输)连接至GAE
+    #使用http还是 https(SSL 加密传输)连接至GAE
     mode = https
     #是否启用 ipv6
     ipv6 = 0
-    #ip评优算法每次选出的ip数量
+    #ip评优算法每次选出的 i p数量
     window = 6
     #是否缓存ip评优算法生成的临时连接
     cachesock = 1

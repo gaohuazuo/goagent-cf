@@ -4,7 +4,7 @@
 > 更新历史中带有"是"需要重新上传，否则不用重新上传。
 > 注意：是否需要重新上传是相对于前一版的，若你之前版本与当前版本之间某一版或多版带有[是]仍然需要重新上传。
 
-1. 遇到FAQ没有解决问题怎么办?
+1. 遇到 FAQ 没有解决问题怎么办?
 > 首先请更新客户端和服务端到最新版(见首页)，如果还有问题的话请提出 issue 。
 > 提 issue 前建议先搜索下看是否是重复的问题。虽然我们可能顾不上回答，但是我们保证每个issue都会看的并尝试解决的。
 
@@ -72,7 +72,7 @@
 > 打开 FireFox->选项->高级->加密->查看证书->证书机构->导入证书, 选择local\CA.crt, 勾选所有项，导入。
 
 1. goagent 原理是什么？
-> goagent是GAE应用，原理可以参考这个图 ![代理示意图](https://cloud.githubusercontent.com/assets/195836/4602738/ac950aba-5149-11e4-8976-a2606ba08e05.png)
+> goagent 是 GAE 应用，原理可以参考这个图 ![代理示意图](https://cloud.githubusercontent.com/assets/195836/4602738/ac950aba-5149-11e4-8976-a2606ba08e05.png)
 
 1. 如何防止 goagent 被匿名使用(盗用)？
 > 目前 goagent 最新版是支持的，请见密码设置 wiki 介绍。
@@ -96,9 +96,9 @@
 > 使用 goagent-uv.exe 启动。
 
 1. 为什么使用 goagent 后访问 google.com 仍然跳转到 google.com.hk?
-> 你访问Google的IP还是中国的，[profile]里删掉.google.com=那行即可，但是搜索时可能会跳出验证码。
-> 如果你想用自己IP上Google，但不想被跳转，先访问 https://www.google.com/ncr 一下即可。
+> 你访问Google的IP还是中国的，[profile]里删掉 .google.com= 那行即可，但是搜索时可能会跳出验证码。
+> 如果你想用自己 IP 上 Google，但不想被跳转，先访问 https://www.google.com/ncr 一下即可。
 
 1. 出现`Address already in use` 错误。
-> 原因：可能是goagent已经在运行或者端口被其他软件占用，比如搜狗浏览器开启全网加速会使用8087端口，比如旧版goagent加入开机启动没有删除、旧版已经在运行。
-> 解决办法：关闭旧版goagent或者其他占用该端口的软件再重启goagent即可。
+> 原因：可能是 goagent 已经在运行或者端口被其他软件占用，比如搜狗浏览器开启全网加速会使用 8087 端口，比如旧版 goagent 加入开机启动没有删除、旧版已经在运行。
+> 解决办法：关闭旧版 goagent 或者其他占用该端口的软件再重启 goagent 即可。
