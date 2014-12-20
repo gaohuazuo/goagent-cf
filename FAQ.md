@@ -15,7 +15,7 @@
 > easy_install gevent
 
 1. youtube 不能上传以及看直播？
-> 请看配置选项 wiki 介绍。https://github.com/goagent/goagent/blob/wiki/ConfigIntroduce.md
+> 请看配置选项 wiki 介绍。https://github.com/goagent/goagent/blob/wiki/ConfigIntroduce.md.ini
 
 1. 提示 HTTP Error code 错误怎么办？
 > 400: BAD Request 一般是 iplist 配置不对，尝试使用默认 iplist。
