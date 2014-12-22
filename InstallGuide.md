@@ -60,7 +60,7 @@
     - <127.0.0.1:8087> 全部使用 GoAgent 代理
   1. 谷歌 Chrome 配合 SwitchyOmega 扩展
     - 安装扩展
-    - 下载 [SwitchyOmega.crx](https://github.com/FelisCatus/SwitchyOmega/releases), 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，拖拽 SwitchyOmega.crx 到该页面之后点击确定即可安装，扩展也可以从 [Chrome 应用商店](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif)获得  
+    - 下载 [SwitchyOmega.crx](https://github.com/FelisCatus/SwitchyOmega/releases), 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，拖拽 SwitchyOmega.crx 到该页面之后点击确定即可安装，扩展也可以从 [Chrome 应用商店](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif) 获得  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e3hhmzjy1zj.jpg_install_Proxy_Switchy_Sharp.png)
     - 导入设置
       - 点击 SwitchyOmega 图标->导入/导出  
