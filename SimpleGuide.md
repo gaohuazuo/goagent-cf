@@ -10,6 +10,6 @@
 - 使用
 
   * Windows 用户推荐使用 goagent.exe 托盘图标设置 IE 代理(对其它浏览器也有效)。
-  * Chrome/Opera 请安装 [SwitchyOmega](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif) 插件(拖放  SwitchyOmega.crx 到扩展设置)，然后导入 SwitchyOptions.bak
+  * Chrome/Opera 请安装 [SwitchyOmega](https://github.com/FelisCatus/SwitchyOmega/releases) 插件(下载 SwitchyOmega.crx 到本地然后拖放到扩展设置)，然后导入 SwitchyOptions.bak
   * Firefox 请安装 [FoxyProxy](https://addons.mozilla.org/zh-cn/firefox/addon/foxyproxy-standard/) ，Firefox需要导入证书，方法请见 FAQ
   * 出现连接不上的情况可以尝试使用 [gscan](https://github.com/yinqiwen/gscan/) 或 [GoGo Tester](https://github.com/azzvx/gogotester/raw/2.3/GoGo%20Tester/bin/Release/GoGo%20Tester.exe) 测速。
