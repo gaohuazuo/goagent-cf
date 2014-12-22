@@ -60,7 +60,7 @@
     - <127.0.0.1:8087> 全部使用 GoAgent 代理
   1. 谷歌 Chrome 配合 SwitchyOmega 扩展
     - 安装扩展
-    - 下载 [SwitchyOmega.crx](https://github.com/FelisCatus/SwitchyOmega/releases), 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，拖拽 SwitchyOmega.crx 到该页面之后点击确定即可安装，扩展也可以从 Chrome 应用商店获得<https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif>  
+    - 下载 [SwitchyOmega.crx](https://github.com/FelisCatus/SwitchyOmega/releases), 地址栏输入 Chrome://extensions/ 后按回车，打开扩展管理页，拖拽 SwitchyOmega.crx 到该页面之后点击确定即可安装，扩展也可以从 [Chrome 应用商店](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif)获得  
     ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e3hhmzjy1zj.jpg_install_Proxy_Switchy_Sharp.png)
     - 导入设置
       - 点击 SwitchyOmega 图标->导入/导出  
@@ -72,8 +72,8 @@
     - 单击地址栏右侧 Proxy SwitchyOmega 图标即可进行模式选择  
       ![浏览器设置](https://raw.githubusercontent.com/goagent/goagent/wiki/InstallGuideImages/786e2887tw1e2s3t6x2ivj.jpg_changemode.png)
       - GoAgent 模式 除匹配 proxy.ini 中 profile 的直连外，其他全部通过 GAE
-      - GoAgent PAAS模式 全部通过PAAS
-      - GoAgent PAC模式 根据 GoAgent 自带的 PAC 文件自动判断是否经过代理
+      - GoAgent PAAS 模式 全部通过 PAAS
+      - GoAgent PAC 模式 根据 GoAgent 自带的 PAC 文件自动判断是否经过代理
       - 自动切换模式 根据切换规则自动选择是否进行代理，并根据所设情景模式自动选择使用何种代理
       - 遇到规则中没有的，可以使用扩展的 "新建规则" 按钮自行添加，选情景模式为 "GoAgent" ，使用此模式可以方便的定制自己的代理切换规则
       - 这个扩展偶尔会出 BUG，出现设置无误但浏览器提示错误 130 无法连接到代理服务器，可以将自己的设置导出之后卸载重装
