@@ -27,7 +27,7 @@
     appid = appid1|appid2|appid3
     ```
 
-  1. 运行 goagent.exe
+  1. 运行 goagent.exe(Linux 用python运行XXX/local文件下的goagent-gtk.py来启动goagent)
   1. 上传
     - Windows 用户：双击 server 文件夹下的 uploader.bat，输入你上步创建的 appid (同时上传多 appid 在 appid 之间用 | 隔开,一次只能上传同一个谷歌帐户下的 appid )填完按回车。根据提示填你的谷歌帐户邮箱地址，填完按回车。根据提示填你的谷歌帐户密码(注意：如果开启了两步验证，密码应为[16位的应用程序专用密码](https://accounts.google.com/b/0/IssuedAuthSubTokens)而非谷歌帐户密码，否则会出现 AttributeError: can't set attribute 错误)，填完按回车。
     - Linux/Mac OSX用户上传方法：在server目录下执行：python uploader.py  
