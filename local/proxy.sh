@@ -24,7 +24,19 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:${PATH}
 
 start() {
     echo -n "Starting ${PACKAGE_DESC}: "
-    nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" | /usr/bin/logger -t ${PACKAGE_NAME} &
+    if [ ! -f /etc/logrotate.d/goagent ];then
+        cat > /etc/logrotate.d/goagent <<EOL                          
+/var/log/goagent.log {
+    daily  
+    rotate 7       
+    compress  
+    missingok
+    notifempty
+    nocreate
+}
+EOL
+    fi
+    nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" >> /var/log/goagent.log &
     echo "${PACKAGE_NAME}."
 }
 
