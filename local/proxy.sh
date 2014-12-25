@@ -24,8 +24,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:${PATH}
 
 start() {
     echo -n "Starting ${PACKAGE_DESC}: "
-    if [ ! -f /etc/logrotate.d/goagent ];then
-        cat > /etc/logrotate.d/goagent <<EOL                          
+    if [ ! -d /etc/logrotate.d ]; then
+        nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" >/usr/bin/logger -t ${PACKAGE_NAME} &
+    else
+        if [ ! -f /etc/logrotate.d/goagent ];then
+            cat > /etc/logrotate.d/goagent <<EOL                          
 /var/log/goagent.log {
     daily  
     rotate 7       
@@ -35,8 +38,9 @@ start() {
     nocreate
 }
 EOL
+        fi
+        nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" >> /var/log/goagent.log &
     fi
-    nohup /usr/bin/env python2.7 proxy.py 2>&1 | grep --line-buffered -v "INFO -" >> /var/log/goagent.log &
     echo "${PACKAGE_NAME}."
 }
 
