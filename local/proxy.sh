@@ -32,10 +32,14 @@ start() {
 /var/log/goagent.log {
     daily
     rotate 7
+    size=100k
     compress
     missingok
     notifempty
     nocreate
+    postrotate
+    service goagent restart
+    endscript
 }
 EOF
         fi
