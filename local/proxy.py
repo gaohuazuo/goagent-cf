@@ -206,6 +206,7 @@ from proxylib import StripPluginEx
 from proxylib import URLRewriteFilter
 from proxylib import UserAgentFilter
 from proxylib import XORCipher
+from proxylib import forward_socket
 
 
 def is_google_ip(ipaddr):
@@ -619,38 +620,32 @@ class PHPFetchPlugin(BaseFetchPlugin):
 class VPSFetchPlugin(BaseFetchPlugin):
     """vps fetch plugin"""
 
-    def __init__(self, fetchservers, username, password):
+    def __init__(self, fetchservers):
         BaseFetchPlugin.__init__(self)
         self.fetchservers = fetchservers
-        self.username = username
-        self.password = password
-        self.fake_headers = {}
 
     def handle(self, handler, **kwargs):
-        if handler.command == 'CONNECT':
-            return self.handle_connect(handler, **kwargs)
+        fetchserver = self.fetchservers[0]
+        scheme, username, password, netloc = ProxyUtil.parse_proxy(fetchserver)
+        if scheme != 'https':
+            raise ValueError('VPSFetchPlugin current only support https protocol')
+        if netloc.rfind(':') <= netloc.rfind(']'):
+            # no port number
+            host = netloc
+            port = 443 if scheme == 'https' else 80
         else:
-            return self.handle_method(handler, **kwargs)
-
-    def handle_connect(self, handler, **kwargs):
-        return
-
-    def handle_method(self, handler, **kwargs):
-        method = handler.command
-        url = handler.path
-        headers = dict((k.title(), v) for k, v in handler.headers.items() if k.title() not in handler.net2.skip_headers)
-        x_headers = {}
-        if 'Host' in headers:
-            x_headers['Host'] = headers.pop('Host')
-        if 'Cookie' in headers:
-            x_headers['Cookie'] = headers.pop('Cookie')
-        headers['Host'] = 'www.%s.com' % self.username
-        self.fake_headers = headers.copy()
-        fetchserver = random.choice(self.fetchservers)
-        response = handler.net2.create_http_request(handler.command, fetchserver, headers, handler.body, handler.net2.connect_timeout)
-        if not response:
-            raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
-        #TODO
+            host, _, port = netloc.rpartition(':')
+            port = int(port)
+        request_data = ''
+        request_data += '%s %s %s\r\n' % (handler.command, handler.path, handler.protocol_version)
+        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in handler.headers.items() if k.title() not in handler.net2.skip_headers)
+        request_data += 'Proxy-Authorization: Baisic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
+        request_data += '\r\n'
+        sock = handler.net2.create_ssl_connection(host, port, handler.net2.connect_timeout, cache_key=netloc)
+        sock.sendall(request_data)
+        if handler.command == 'CONNECT':
+            handler.connection.send('HTTP/1.1 200 OK\r\n\r\n')
+        forward_socket(handler.connection, sock, 60, bufsize=256*1024)
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
@@ -836,6 +831,16 @@ class VPSProxyHandler(SimpleProxyHandler):
 
     def __init__(self, *args, **kwargs):
         SimpleProxyHandler.__init__(self, *args, **kwargs)
+
+    def first_run(self):
+        """VPSProxyHandler setup, init domain/iplist map"""
+        if not common.PROXY_ENABLE:
+            hostname = urlparse.urlsplit(common.PHP_FETCHSERVER).hostname
+            net2 = AdvancedNet2(window=2, ssl_version='SSLv23', dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
+            net2.enable_connection_cache()
+            net2.enable_connection_keepalive()
+            net2.enable_openssl_session_cache()
+            self.__class__.net2 = net2
 
 
 class PacUtil(object):
@@ -1361,7 +1366,9 @@ class Common(object):
         self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
         self.PHP_HOSTS = self.CONFIG.get('php', 'hosts').split('|') if self.CONFIG.get('php', 'hosts') else []
 
-        self.VPS_ENABLE = self.CONFIG.getint('vps', 'enable') if self.CONFIG.has_option('vps', 'enable') else 0
+        self.VPS_ENABLE = self.CONFIG.getint('vps', 'enable')
+        self.VPS_LISTEN = self.CONFIG.get('vps', 'listen')
+        self.VPS_FETCHSERVER = self.CONFIG.get('vps', 'fetchserver')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
@@ -1481,6 +1488,9 @@ class Common(object):
         if common.PHP_ENABLE:
             info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
             info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
+        if common.VPS_ENABLE:
+            info += 'VPS Listen         : %s\n' % common.VPS_LISTEN
+            info += 'VPS FetchServer    : %s\n' % common.VPS_FETCHSERVER
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
             info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_SERVERS)
@@ -1617,9 +1627,18 @@ def main():
         php_server = LocalProxyServer((host, int(port)), PHPProxyHandler)
         thread.start_new_thread(php_server.serve_forever, tuple())
 
+    vps_server = None
+    if common.VPS_ENABLE:
+        host, port = common.VPS_LISTEN.split(':')
+        VPSProxyHandler.handler_plugins['vps'] = VPSFetchPlugin(common.VPS_FETCHSERVER.split('|'))
+        vps_server = LocalProxyServer((host, int(port)), VPSProxyHandler)
+        thread.start_new_thread(vps_server.serve_forever, tuple())
+
     if common.GAE_ENABLE:
         if common.PHP_ENABLE:
             GAEProxyHandler.handler_plugins['php'] = php_server.RequestHandlerClass.handler_plugins['php']
+        if common.VPS_ENABLE:
+            GAEProxyHandler.handler_plugins['vps'] = vps_server.RequestHandlerClass.handler_plugins['vps']
         if os.name == 'nt':
             GAEProxyHandler.handler_plugins['strip'] = StripPluginEx()
         gae_server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
