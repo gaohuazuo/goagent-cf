@@ -59,6 +59,12 @@ def upload(host, username, password):
     for name in os.listdir('vps'):
         logging.info('upload %s', name)
         sftp.put('vps/%s' % name, '%s/%s' % (dirname, name))
+    client.exec_command('/bin/cp -f /opt/goagent/vps/sysctl.conf /etc/')
+    client.exec_command('/bin/cp -f /opt/goagent/vps/limits.conf /etc/security/')
+    client.exec_command('sysctl -p')
+    client.exec_command('/bin/ln -sf /opt/goagent/vps/vpsserver.sh /etc/init.d/vpsserver')
+    client.exec_command('/etc/init.d/vpsserver stop')
+    client.exec_command('/etc/init.d/vpsserver start')
 
 
 def main():
