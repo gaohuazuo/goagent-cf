@@ -1,68 +1,50 @@
-#!/bin/sh
+#! /bin/sh
 #
-# goagent init script
+# goagentvps init script
 #
 
 ### BEGIN INIT INFO
-# Provides:          goagent
+# Provides:          goagentvps
 # Required-Start:    $syslog
 # Required-Stop:     $syslog
 # Should-Start:      $local_fs
 # Should-Stop:       $local_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Monitor for goagent activity
-# Description:       goagent is a vps proxy.
+# Short-Description: Monitor for goagentvps activity
+# Description:       goagentvps is python wsgi server.
 ### END INIT INFO
 
 # **NOTE** bash will exit immediately if any command exits with non-zero.
 set -e
 
 PACKAGE_NAME=goagentvps
-PACKAGE_DESC="goagent vps server"
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:${PATH}
+PACKAGE_DESC="python goagentvps"
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 start() {
     echo -n "Starting ${PACKAGE_DESC}: "
-    if [ ! -d /etc/logrotate.d ]; then
-        nohup /usr/bin/env python2.7 vpsserver.py 2>&1 | grep --line-buffered -v "INFO -" | /usr/bin/logger -t ${PACKAGE_NAME} &
-    else
-        if [ ! -f /etc/logrotate.d/goagentvps ]; then
-            cat > /etc/logrotate.d/goagentvps <<EOF
-/var/log/goagentvps.log {
-    daily
-    rotate 7
-    size=100k
-    compress
-    missingok
-    notifempty
-    nocreate
-    postrotate
-    service goagentvps restart
-    endscript
-}
-EOF
-        fi
-        nohup /usr/bin/env python2.7 vpsserver.py 2>&1 | grep --line-buffered -v "INFO -" >> /var/log/goagentvps.log &
-    fi
+    PYTHONPATH=$(/usr/bin/env python -c "print ':'.join(__import__('glob').glob('*.egg')),"):${PYTHONPATH} \
+        /usr/bin/env python -m supervisor.supervisord -c ./supervisord-${PACKAGE_NAME}.conf
     echo "${PACKAGE_NAME}."
+    echo "sudo tail -F /var/log/${PACKAGE_NAME}/*.log to view logs"
 }
 
 stop() {
     echo -n "Stopping ${PACKAGE_DESC}: "
-    kill -9 `ps aux | grep 'python2.7 vpsserver.py' | grep -v grep | awk '{print $2}'` >/dev/null 2>&1 || true
+    kill `ps aux | grep -v grep | grep supervisord-${PACKAGE_NAME} | awk '{print $2}'` 2>/dev/null || true
     echo "${PACKAGE_NAME}."
 }
 
 restart() {
-    stop || true
+    stop
     sleep 1
     start
 }
 
 usage() {
     N=$(basename "$0")
-    echo "Usage: [sudo] $N {start|stop|restart}" >&2
+    echo "Usage: sudo $N {start|stop|restart}" >&2
     exit 1
 }
 
@@ -71,23 +53,26 @@ if [ "$(id -u)" != "0" ]; then
     exit 0
 fi
 
-# `readlink -f` won't work on Mac, this hack should work on all systems.
-cd $(python -c "import os; print os.path.dirname(os.path.realpath('$0'))")
+cd $(dirname $(readlink -f "$0"))
+
+if [ -f /usr/local/${PACKAGE_NAME}/${PACKAGE_NAME}.sh ]; then
+    cd /usr/local/${PACKAGE_NAME}
+fi
 
 case "$1" in
-    start)
-        start
-        ;;
-    stop)
-        stop
-        ;;
-    #reload)
-    restart | force-reload)
-        restart
-        ;;
-    *)
-        usage
-        ;;
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  #reload)
+  restart|force-reload)
+    restart
+    ;;
+  *)
+    usage
+    ;;
 esac
 
 exit 0
