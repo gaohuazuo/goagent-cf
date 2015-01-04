@@ -4,6 +4,7 @@
 import sys
 import sysconfig
 import os
+import glob
 import getpass
 import logging
 
@@ -42,28 +43,27 @@ getpass.getpass = getpass_getpass
 
 def upload(host, username, password):
     import paramiko
-    port = 22
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
     logging.info('connect %s', host)
-    client.connect(host, port, username, password)
-    dirname = '/opt/goagent/vps/'
-    cmd = 'mkdir -p %s' % dirname
-    client.exec_command(cmd)
+    client.connect(host, 22, username, password)
+    client.exec_command('mkdir -p /opt/goagent/{vps,log}')
     logging.info('open sftp...')
     sftp = client.open_sftp()
     logging.info('open sftp ok')
-    sftp.chdir(dirname)
-    logging.info('upload proxylib.py')
-    sftp.put('../local/proxylib.py', 'proxylib.py')
-    for name in os.listdir('vps'):
-        logging.info('upload %s', name)
-        sftp.put('vps/%s' % name, '%s/%s' % (dirname, name))
-    client.exec_command('/bin/cp -f /opt/goagent/vps/sysctl.conf /etc/')
-    client.exec_command('/bin/cp -f /opt/goagent/vps/limits.conf /etc/security/')
-    client.exec_command('sysctl -p')
-    client.exec_command('/bin/ln -sf /opt/goagent/vps/goagentvps.sh /etc/init.d/goagentvps')
-    client.exec_command('mkdir -p /opt/goagent/log')
+    sftp.chdir('/opt/goagent/vps')
+    uploadlist = ['../local/proxylib.py', 'vps/*']
+    for filename in sum((glob.glob(x) for x in uploadlist), []):
+        logging.info('upload %s', filename)
+        sftp.put(filename, '/opt/goagent/vps/%s' % os.path.basename(filename))
+    cmds = ['/bin/cp -f /opt/goagent/vps/sysctl.conf /etc/',
+            '/bin/cp -f /opt/goagent/vps/limits.conf /etc/security/',
+            '/bin/ln -sf /opt/goagent/vps/goagentvps.sh /etc/init.d/goagentvps',
+            'chmod +x /opt/goagent/vps/goagentvps.sh',
+            'which update-rc.d && update-rc.d goagentvps defaults'
+            'which chkconfig && chkconfig goagentvps on'
+            'sysctl -p']
+    client.exec_command(' ; '.join(cmds))
     client.exec_command('/etc/init.d/goagentvps stop')
     client.exec_command('/etc/init.d/goagentvps start')
 
