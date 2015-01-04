@@ -27,7 +27,7 @@ start() {
     PYTHONPATH=$(/usr/bin/env python -c "print ':'.join(__import__('glob').glob('*.egg')),"):${PYTHONPATH} \
         /usr/bin/env python -m supervisor.supervisord -c ./supervisord-${PACKAGE_NAME}.conf
     echo "${PACKAGE_NAME}."
-    echo "sudo tail -F /var/log/${PACKAGE_NAME}/*.log to view logs"
+    echo "sudo tail -F /opt/${PACKAGE_NAME}/log/*.log to view logs"
 }
 
 stop() {
