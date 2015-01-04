@@ -44,11 +44,13 @@ class VPSFetchPlugin(BaseFetchPlugin):
         BaseFetchPlugin.__init__(self)
 
     def handle(self, handler, **kwargs):
+        logging.info('%s "%s %s %s" - -', handler.address_string(), handler.command, handler.path, handler.protocol_version)
         if handler.command != 'CONNECT':
             handler.wfile.write('HTTP/1.1 403 Forbidon\r\n\r\n')
             return
         cache_key = kwargs.pop('cache_key', '')
         sock = handler.net2.create_tcp_connection(handler.host, handler.port, handler.net2.connect_timeout, cache_key=cache_key)
+        handler.connection.send('HTTP/1.1 200 OK\r\n\r\n')
         forward_socket(handler.connection, sock, 60, 256*1024)
 
 

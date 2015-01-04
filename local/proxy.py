@@ -652,8 +652,6 @@ class VPSServer(gevent.server.StreamServer):
         remote = self.net2.create_ssl_connection(host, port, 8, cache_key=netloc)
         request_data = '%s\r\nProxy-Authorization: Baisic %s\r\n%s' % (request_line, base64.b64encode('%s:%s' % (username, password)).strip(), header_data)
         remote.sendall(request_data)
-        if request_line.startswith('CONNECT '):
-            sock.send('HTTP/1.1 200 OK\r\n\r\n')
         forward_socket(sock, remote, 60, bufsize=256*1024)
 
 
