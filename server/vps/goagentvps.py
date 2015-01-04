@@ -132,10 +132,10 @@ def main():
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    keyfile = 'vpsserver.pem'
+    keyfile = os.path.splitext(__file__)[0] + '.pem'
     if not os.path.exists(keyfile) or time.time() - os.path.getctime(keyfile) > 3 * 24 * 60 * 60:
         CertUtility(random_hostname(), keyfile, 'certs').dump_ca()
-    authfile = 'vpsserver.conf'
+    authfile = os.path.splitext(__file__)[0] + '.conf'
     if not os.path.exists(authfile):
         logging.info('autfile %r not exists, create it', authfile)
         with open(authfile, 'wb') as fp:

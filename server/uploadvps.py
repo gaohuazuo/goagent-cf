@@ -62,10 +62,10 @@ def upload(host, username, password):
     client.exec_command('/bin/cp -f /opt/goagent/vps/sysctl.conf /etc/')
     client.exec_command('/bin/cp -f /opt/goagent/vps/limits.conf /etc/security/')
     client.exec_command('sysctl -p')
-    client.exec_command('/bin/ln -sf /opt/goagent/vps/vpsserver.sh /etc/init.d/vpsserver')
+    client.exec_command('/bin/ln -sf /opt/goagent/vps/goagentvps.sh /etc/init.d/goagentvps')
     client.exec_command('mkdir -p /opt/goagent/log')
-    client.exec_command('/etc/init.d/vpsserver stop')
-    client.exec_command('/etc/init.d/vpsserver start')
+    client.exec_command('/etc/init.d/goagentvps stop')
+    client.exec_command('/etc/init.d/goagentvps start')
 
 
 def main():
