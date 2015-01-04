@@ -1603,7 +1603,11 @@ def main():
     vps_server = None
     if common.VPS_ENABLE:
         host, port = common.VPS_LISTEN.split(':')
-        VPSServer.net2 = AdvancedNet2(window=4, ssl_version='SSLv23', dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
+        VPSServer.net2 = AdvancedNet2(window=2, ssl_version='SSLv23', dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
+        VPSServer.net2.enable_connection_cache()
+        VPSServer.net2.enable_connection_keepalive()
+        VPSServer.net2.enable_openssl_session_cache()
+        VPSServer.net2.openssl_context.set_cipher_list('RC4-MD5:RC4-SHA:!aNULL:!eNULL')
         vps_server = VPSServer((host, int(port)), backlog=1024, fetchservers=common.VPS_FETCHSERVER.split('|'))
         thread.start_new_thread(vps_server.serve_forever, tuple())
 

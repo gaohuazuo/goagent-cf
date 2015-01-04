@@ -150,6 +150,8 @@ def main():
     VPSProxyHandler.handler_filters.insert(0, VPSAuthFilter(authfile))
     VPSProxyHandler.handler_plugins['vps'] = VPSFetchPlugin()
     VPSProxyHandler.net2 = AdvancedNet2(window=2, ssl_version='SSLv23')
+    VPSProxyHandler.net2.enable_connection_cache()
+    VPSProxyHandler.net2.enable_connection_keepalive()
     listener = getlistener(('', 443), socket.AF_INET, sslargs=dict(keyfile=keyfile, certfile=keyfile))
     server = LocalProxyServer(listener, VPSProxyHandler)
     server.serve_forever()
