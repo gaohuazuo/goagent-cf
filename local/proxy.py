@@ -627,42 +627,41 @@ class VPSServer(gevent.server.StreamServer):
     def __init__(self, *args, **kwargs):
         self.fetchservers = kwargs.pop('fetchservers')
         gevent.server.StreamServer.__init__(self, *args, **kwargs)
+        self.remote_cache = {}
 
     def forward_socket(self, local, remote, timeout, bufsize):
         """forward socket"""
-        try:
-            tick = 1
-            timecount = timeout
-            while 1:
-                timecount -= tick
-                if timecount <= 0:
-                    break
-                (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-                if errors:
-                    break
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if not data:
-                        break
-                    if sock is remote:
-                        local.sendall(data)
-                        timecount = timeout
-                    else:
-                        remote.sendall(data)
-                        timecount = timeout
-        except socket.timeout:
-            pass
-        except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
-                raise
-            if e.args[0] in (errno.EBADF,):
+        tick = 1
+        count = timeout
+        while 1:
+            count -= tick
+            if count <= 0:
+                break
+            ins, _, errors = select.select([local, remote], [], [local, remote], tick)
+            if remote in errors:
+                local.close()
+                remote.close()
                 return
-        finally:
-            for sock in (remote, local):
-                try:
-                    sock.close()
-                except StandardError:
-                    pass
+            if local in errors:
+                local.close()
+                remote.close()
+                return
+            if remote in ins:
+                data = remote.recv(bufsize)
+                if not data:
+                    remote.close()
+                    local.close()
+                    return
+                local.sendall(data)
+            if local in ins:
+                data = local.recv(bufsize)
+                if not data:
+                    remote.close()
+                    local.close()
+                    return
+                remote.sendall(data)
+            if ins:
+                count = timeout
 
     def handle(self, sock, addr):
         request_data = data = ''
@@ -689,7 +688,13 @@ class VPSServer(gevent.server.StreamServer):
         remote = self.net2.create_ssl_connection(host, port, 8, cache_key=netloc)
         request_data = '%s\r\nProxy-Authorization: Baisic %s\r\n%s' % (request_line, base64.b64encode('%s:%s' % (username, password)).strip(), header_data)
         remote.sendall(request_data)
-        self.forward_socket(sock, remote, 60, bufsize=256*1024)
+        try:
+            self.forward_socket(sock, remote, 60, bufsize=256*1024)
+        except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+            if e.args[0] in (errno.EBADF,):
+                return
 
 
 class GAEFetchFilter(BaseProxyHandlerFilter):
