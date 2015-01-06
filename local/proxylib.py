@@ -1080,16 +1080,19 @@ class DirectFetchPlugin(BaseFetchPlugin):
                 headers['Range'] = 'bytes=%d-' % rescue_bytes
             response = handler.net2.create_http_request(method, url, headers, body, timeout=handler.net2.connect_timeout, read_timeout=self.read_timeout, **kwargs)
             logging.info('%s "DIRECT %s %s %s" %s %s', handler.address_string(), handler.command, url, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
-            response_headers = dict((k.title(), v) for k, v in response.getheaders())
+            need_chunked = bool(response.getheader('Transfer-Encoding'))
             if not rescue_bytes:
                 handler.send_response(response.status)
                 for key, value in response.getheaders():
-                    handler.send_header(key, value)
+                    if (key.title(), value.lower()) == ('Connection', 'close'):
+                        handler.send('Transfer-Encoding', 'chunked')
+                        need_chunked = True
+                    else:
+                        handler.send_header(key, value)
                 handler.end_headers()
             if handler.command == 'HEAD' or response.status in (204, 304):
                 response.close()
                 return
-            need_chunked = 'Transfer-Encoding' in response_headers
             bufsize = 8192
             written = rescue_bytes
             while True:
