@@ -128,6 +128,24 @@ class CipherFileObject(object):
         return self.__cipher.encrypt(self.__fileobj.read(size))
 
 
+class CipherSocket(object):
+    """socket wrapper for cipher"""
+    def __init__(self, sock, cipher):
+        self.__sock = fileobj
+        self.__cipher = cipher
+
+    def __getattr__(self, attr):
+        if attr not in ('__sock', '__cipher'):
+            return getattr(self.__sock, attr)
+
+    def recv(self, size):
+        data = self.__sock.recv(size)
+        return data and self.__cipher.encrypt(data)
+
+    def send(self, data, flags=0):
+        return data and self.__sock.send(self.__cipher.encrypt(data), flags)
+
+
 class LRUCache(object):
     """http://pypi.python.org/pypi/lru/"""
 
