@@ -52,7 +52,7 @@ def upload(host, username, password):
     sftp = client.open_sftp()
     logging.info('open sftp ok')
     sftp.chdir('/opt/goagent/vps')
-    uploadlist = ['../local/proxylib.py', 'vps/*']
+    uploadlist = ['vps/*', '../local/proxylib.py']
     for filename in sum((glob.glob(x) for x in uploadlist), []):
         logging.info('upload %s', filename)
         sftp.put(filename, '/opt/goagent/vps/%s' % os.path.basename(filename))

@@ -116,9 +116,13 @@ class XORCipher(object):
 
 class CipherFileObject(object):
     """fileobj wrapper for cipher"""
-    def __init__(self, fileobj, cipher):
+    def __init__(self, fileobj, cipher, mode='r'):
         self.__fileobj = fileobj
         self.__cipher = cipher
+        if 'r' not in mode:
+            self.read = self.__fileobj.read
+        if 'w' not in mode:
+            self.write = self.__fileobj.write
 
     def __getattr__(self, attr):
         if attr not in ('__fileobj', '__cipher'):
@@ -127,23 +131,47 @@ class CipherFileObject(object):
     def read(self, size=-1):
         return self.__cipher.encrypt(self.__fileobj.read(size))
 
+    def write(self, data):
+        return self.__fileobj.write(self.__cipher.encrypt(data))
 
-class CipherSocket(object):
+
+class RC4Socket(object):
     """socket wrapper for cipher"""
-    def __init__(self, sock, cipher):
-        self.__sock = fileobj
-        self.__cipher = cipher
+    def __init__(self, sock, key):
+        self.__sock = sock
+        self.__key = key
+        self.__recv_cipher = RC4Cipher(key)
+        self.__send_cipher = RC4Cipher(key)
 
     def __getattr__(self, attr):
-        if attr not in ('__sock', '__cipher'):
+        if attr not in ('__sock', '__key', '__recv_cipher', '__send_cipher'):
             return getattr(self.__sock, attr)
 
     def recv(self, size):
         data = self.__sock.recv(size)
-        return data and self.__cipher.encrypt(data)
+        return data and self.__recv_cipher.encrypt(data)
 
     def send(self, data, flags=0):
-        return data and self.__sock.send(self.__cipher.encrypt(data), flags)
+        return data and self.__sock.send(self.__send_cipher.encrypt(data), flags)
+
+    def sendall(self, data, flags=0):
+        amount = len(data)
+        count = 0
+        while count < amount:
+            v = self.send(data[count:])
+            count += v
+        return amount
+
+    def dup(self):
+        return RC4Socket(self.__sock.dup(), self.__key)
+
+    def makefile(self, mode='r', bufsize=-1):
+        cipher = None
+        if 'r' in mode:
+            cipher = self.__recv_cipher
+        if 'w' in mode:
+            cipher = self.__send_cipher
+        return CipherFileObject(self.__sock.makefile(mode, bufsize), cipher, mode)
 
 
 class LRUCache(object):
