@@ -45,7 +45,6 @@
 #      Hubertzhang       <hubert.zyk@gmail.com>
 #      arrix             <arrixzhou@gmail.com>
 #      gwjwin            <gwjwin@sina.com>
-#      Jobin             <1149225004@qq.com>
 #      Zhuhao Wang       <zhuhaow@gmail.com>
 #      YFdyh000          <yfdyh000@gmail.com>
 #      zzq1015           <zzq1015@users.noreply.github.com>
