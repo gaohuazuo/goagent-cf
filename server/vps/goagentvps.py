@@ -70,6 +70,7 @@ class TCPServer(gevent.server.StreamServer):
 
     def handle(self, sock, address):
         if re.match('\x16\x03[\x01\x02\x03\x04\x05]..\x01', sock.recv(6, socket.MSG_PEEK)):
+            logging.info("%r got a tls connection")
             sock = SSLConnection(self.ssl_context, sock)
             sock.set_accept_state()
             sock.do_handshake()
@@ -80,8 +81,10 @@ class TCPServer(gevent.server.StreamServer):
                 sock.close()
                 return
         else:
+            logging.info("%r got a tcp connection", address)
             seed = readn(sock, int(hashlib.md5(self.password).hexdigest(), 16) % 11)
             digest = hmac.new(self.password, seed).digest()
+            logging.info("%r seed=%r digest=%r", address, seed, digest)
             sock = RC4Socket(sock, digest)
         domain = readn(sock, ord(readn(sock, 1)))
         if not re.match(r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$', domain):
@@ -101,11 +104,14 @@ class TCPServer(gevent.server.StreamServer):
             data = readn(sock, datasize)
             if flag & 0x8:
                 data = inflate(data)
-        remote = socket.create_connection((domain, port), timeout=8)
+        timeout = 8
+        logging.info("create_connection to (%r, %r), timeout=%r", domain, port, timeout)
+        remote = socket.create_connection((domain, port), timeout=timeout)
         if do_ssl_handshake:
             remote = ssl.wrap_socket(remote)
         if data:
             remote.sendall(data)
+        logging.info("begin forward bewteen %r and %r", sock, remote)
         forward_socket(sock, remote, timeout=60, bufsize=256*1024)
 
 

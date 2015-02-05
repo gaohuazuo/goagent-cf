@@ -919,7 +919,7 @@ class VPSFetchPlugin(BaseFetchPlugin):
                     handler.wfile.write('\r\n')
                 del data
         except Exception as e:
-            logging.exception('%s VPS handle error: %r', e)
+            logging.exception('VPS handle error: %r', e)
         finally:
             response.begin()
 
