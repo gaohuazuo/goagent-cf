@@ -806,7 +806,9 @@ class VPSFetchPlugin(BaseFetchPlugin):
                 port = {'http': 80}.get(mode, 443)
             self.servers.append(ServerTuple(mode=mode, password=password, host=host, port=port))
         self.openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+        self.openssl_context.set_cipher_list('RC4-MD5:RC4-SHA:!aNULL:!eNULL')
         openssl_set_session_cache_mode(self.openssl_context, 'client')
+        self.http_connection_cache = collections.defaultdict(Queue.Queue)
 
     def handle(self, handler, **kwargs):
         if handler.command == 'CONNECT':
@@ -883,11 +885,21 @@ class VPSFetchPlugin(BaseFetchPlugin):
 
     def handle_method(self, handler, **kwargs):
         headers = dict((k.title(), v) for k, v in handler.headers.items() if k.title() not in handler.net2.skip_headers)
-        payload = '%s %s %s\r\n%s\r\n' % (handler.command, urlparse.urlsplit(handler.path).path, handler.request_version, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items()))
-        sock = self._create_remote_connection((handler.host, handler.port), 8)
+        urlparts = urlparse.urlsplit(handler.path)
+        urlpath = urlparts.path + '?' + urlparts.query if urlparts.query else urlparts.path
+        payload = '%s %s %s\r\n%s\r\n' % (handler.command, urlpath, handler.request_version, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items()))
         if handler.body:
             payload += handler.body
-        sock.send(payload)
+        try:
+            while True:
+                ctime, sock = self.http_connection_cache[(handler.host, handler.port)].get_nowait()
+                if time.time() - ctime < 60:
+                    break
+                else:
+                    sock.close()
+        except Queue.Empty:
+            sock = self._create_remote_connection((handler.host, handler.port), 8)
+        sock.sendall(payload)
         if sys.version[:3] == '2.7':
             response = httplib.HTTPResponse(sock, buffering=True)
         else:
@@ -901,7 +913,7 @@ class VPSFetchPlugin(BaseFetchPlugin):
             handler.send_response(response.status)
             for key, value in response.getheaders():
                 if (key.title(), value.lower()) == ('Connection', 'close'):
-                    handler.send('Transfer-Encoding', 'chunked')
+                    handler.send_header('Transfer-Encoding', 'chunked')
                     need_chunked = True
                 else:
                     handler.send_header(key, value)
@@ -918,10 +930,18 @@ class VPSFetchPlugin(BaseFetchPlugin):
                 if need_chunked:
                     handler.wfile.write('\r\n')
                 del data
+        except (socket.error, ssl.SSLError, OpenSSL.SSL.Error) as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+            if e.args[0] in (errno.EBADF,):
+                return
         except Exception as e:
-            logging.exception('VPS handle error: %r', e)
+            logging.exception('VPS %s %r error: %r', e, handler.command, handler.path)
         finally:
-            response.begin()
+            if response.fp:
+                response.fp = None
+                response.close()
+                self.http_connection_cache[(handler.host, handler.port)].put((time.time(), sock))
 
 
 class VPSFetchFilter(BaseProxyHandlerFilter):

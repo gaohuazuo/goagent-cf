@@ -38,6 +38,7 @@ from proxylib import forward_socket
 from proxylib import inflate
 from proxylib import random_hostname
 from proxylib import SSLConnection
+from proxylib import openssl_set_session_cache_mode
 from proxylib import CertUtility
 from proxylib import RC4Socket
 
@@ -65,13 +66,14 @@ class TCPServer(gevent.server.StreamServer):
     """VPS tcp server"""
     def __init__(self, *args, **kwargs):
         self.password = kwargs.pop('password')
-        self.ssl_context = generate_openssl_context(random_hostname())
+        self.openssl_context = generate_openssl_context(random_hostname())
+        openssl_set_session_cache_mode(self.openssl_context, 'server')
         gevent.server.StreamServer.__init__(self, *args, **kwargs)
 
     def handle(self, sock, address):
         if re.match('\x16\x03[\x01\x02\x03\x04\x05]..\x01', sock.recv(6, socket.MSG_PEEK)):
-            logging.info("%r got a tls connection")
-            sock = SSLConnection(self.ssl_context, sock)
+            logging.info("%r got a tls connection", address)
+            sock = SSLConnection(self.openssl_context, sock)
             sock.set_accept_state()
             sock.do_handshake()
             password = readn(sock, len(self.password))
