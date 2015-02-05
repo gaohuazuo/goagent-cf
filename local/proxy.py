@@ -211,6 +211,8 @@ from proxylib import UserAgentFilter
 from proxylib import XORCipher
 from proxylib import RC4Socket
 from proxylib import forward_socket
+from proxylib import openssl_set_session_cache_mode
+from proxylib import SSLConnection
 
 
 def is_google_ip(ipaddr):
@@ -801,8 +803,10 @@ class VPSFetchPlugin(BaseFetchPlugin):
                 port = int(m.group(2))
             else:
                 host = hostport
-                port = {'tcp': 3389, 'http': 80, 'ssl':443, 'tls': 443, 'dtls': 443}[mode]
+                port = {'http': 80}.get(mode, 443)
             self.servers.append(ServerTuple(mode=mode, password=password, host=host, port=port))
+        self.openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+        openssl_set_session_cache_mode(self.openssl_context, 'client')
 
     def handle(self, handler, **kwargs):
         if handler.command == 'CONNECT':
@@ -821,7 +825,9 @@ class VPSFetchPlugin(BaseFetchPlugin):
                 sock.settimeout(timeout)
                 sock.connect((server.host, server.port))
                 if server.mode in ('tls', 'ssl'):
-                    sock = ssl.wrap_socket(sock)
+                    sock = SSLConnection(self.openssl_context, sock)
+                    sock.set_connect_state()
+                    sock.do_handshake()
                 sock.server = server
                 queobj.put(sock)
             except (socket.error, ssl.SSLError, OSError) as e:
@@ -870,6 +876,7 @@ class VPSFetchPlugin(BaseFetchPlugin):
         return sock
 
     def handle_connect(self, handler, **kwargs):
+        logging.info('%s "VPS %s %s %s" - -', handler.address_string(), handler.command, handler.path, handler.protocol_version)
         sock = self._create_remote_connection((handler.host, handler.port), 8)
         handler.connection.send('HTTP/1.1 200 OK\r\n\r\n')
         forward_socket(sock, handler.connection, bufsize=256*1024, timeout=60)

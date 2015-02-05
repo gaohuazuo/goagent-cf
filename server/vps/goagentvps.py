@@ -7,6 +7,7 @@ __version__ = '1.0.0'
 
 import os
 import sys
+import re
 import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
@@ -64,15 +65,31 @@ class TCPServer(gevent.server.StreamServer):
     """VPS tcp server"""
     def __init__(self, *args, **kwargs):
         self.password = kwargs.pop('password')
+        self.ssl_context = generate_openssl_context(random_hostname())
         gevent.server.StreamServer.__init__(self, *args, **kwargs)
 
     def handle(self, sock, address):
-        seed = readn(sock, int(hashlib.md5(self.password).hexdigest(), 16) % 11)
-        digest = hmac.new(self.password, seed).digest()
-        csock = RC4Socket(sock, digest)
-        domain = readn(csock, ord(readn(csock, 1)))
-        port, = struct.unpack('>H', readn(csock, 2))
-        flag = ord(readn(csock, 1))
+        if re.match('\x16\x03[\x01\x02\x03\x04\x05]..\x01', sock.recv(6, socket.MSG_PEEK)):
+            sock = SSLConnection(self.ssl_context, sock)
+            sock.set_accept_state()
+            sock.do_handshake()
+            password = readn(sock, len(self.password))
+            if password != self.password:
+                logging.info("%r send wrong password=%r", address, password)
+                sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
+                sock.close()
+                return
+        else:
+            seed = readn(sock, int(hashlib.md5(self.password).hexdigest(), 16) % 11)
+            digest = hmac.new(self.password, seed).digest()
+            sock = RC4Socket(sock, digest)
+        domain = readn(sock, ord(readn(sock, 1)))
+        if not re.match(r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$', domain):
+            logging.info("%r send wrong domain=%r", address, domain)
+            sock.close()
+            return
+        port, = struct.unpack('>H', readn(sock, 2))
+        flag = ord(readn(sock, 1))
         data = ''
         do_ssl_handshake = False
         if flag & 0x1:
@@ -80,8 +97,8 @@ class TCPServer(gevent.server.StreamServer):
         if flag & 0x2:
             do_ssl_handshake = True
         if flag & 0x4:
-            datasize, = struct.unpack('>H', readn(csock, 2))
-            data = readn(csock, datasize)
+            datasize, = struct.unpack('>H', readn(sock, 2))
+            data = readn(sock, datasize)
             if flag & 0x8:
                 data = inflate(data)
         remote = socket.create_connection((domain, port), timeout=8)
@@ -89,46 +106,7 @@ class TCPServer(gevent.server.StreamServer):
             remote = ssl.wrap_socket(remote)
         if data:
             remote.sendall(data)
-        forward_socket(csock, remote, timeout=60, bufsize=256*1024)
-
-
-class TLSServer(gevent.server.StreamServer):
-    """VPS tls server"""
-    def __init__(self, *args, **kwargs):
-        self.password = kwargs.pop('password')
-        self.ssl_context = generate_openssl_context(random_hostname())
-        gevent.server.StreamServer.__init__(self, *args, **kwargs)
-
-    def handle(self, sock, address):
-        ssl_sock = SSLConnection(self.ssl_context, sock)
-        ssl_sock.set_accept_state()
-        ssl_sock.do_handshake()
-        password = readn(ssl_sock, len(self.password))
-        if password != self.password:
-            logging.info("%r send wrong password=%r", address, password)
-            ssl_sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
-            ssl_sock.close()
-            return
-        domain = readn(ssl_sock, ord(readn(ssl_sock, 1)))
-        port, = struct.unpack('>H', readn(ssl_sock, 2))
-        flag = ord(readn(ssl_sock, 1))
-        data = ''
-        do_ssl_handshake = False
-        if flag & 0x1:
-            raise ValueError('Now UDP is unsupported')
-        if flag & 0x2:
-            do_ssl_handshake = True
-        if flag & 0x4:
-            datasize, = struct.unpack('>H', readn(ssl_sock, 2))
-            data = readn(ssl_sock, datasize)
-            if flag & 0x8:
-                data = inflate(data)
-        remote = socket.create_connection((domain, port), timeout=8)
-        if do_ssl_handshake:
-            remote = ssl.SSLSocket(remote)
-        if data:
-            remote.sendall(data)
-        forward_socket(ssl_sock, remote, timeout=60, bufsize=256*1024)
+        forward_socket(sock, remote, timeout=60, bufsize=256*1024)
 
 
 def main():
@@ -137,10 +115,8 @@ def main():
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    tcp_server = TCPServer(('', 3389), password='123456')
-    gevent.spawn(tcp_server.serve_forever)
-    tls_server = TLSServer(('', 443), password='123456')
-    tls_server.serve_forever()
+    tcp_server = TCPServer(('', 443), password='123456')
+    tcp_server.serve_forever()
 
 
 if __name__ == '__main__':
