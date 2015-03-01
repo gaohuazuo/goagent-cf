@@ -1103,7 +1103,7 @@ class DirectFetchPlugin(BaseFetchPlugin):
                 handler.send_response(response.status)
                 for key, value in response.getheaders():
                     if (key.title(), value.lower()) == ('Connection', 'close'):
-                        handler.send('Transfer-Encoding', 'chunked')
+                        handler.send_header('Transfer-Encoding', 'chunked')
                         need_chunked = True
                     else:
                         handler.send_header(key, value)
