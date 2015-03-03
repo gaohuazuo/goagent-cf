@@ -73,6 +73,7 @@ import ConfigParser
 import errno
 import httplib
 import io
+import locale
 import Queue
 import random
 import re
@@ -448,7 +449,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
             else:
                 status = 502
                 headers = {'Content-Type': 'text/html'}
-                content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % handler.path, '<br>'.join(repr(x) for x in errors))
+                content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % handler.path, '<br>'.join(str(x).decode(locale.getpreferredencoding()) for x in errors))
             return handler.handler_plugins['mock'].handle(handler, status, headers, content)
         logging.info('%s "GAE %s %s %s" %s %s', handler.address_string(), handler.command, handler.path, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
         try:
