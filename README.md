@@ -1,20 +1,30 @@
-goagent 3.2.3 正式版下载 [http://git.io/goa](https://nodeload.github.com/goagent/goagent/legacy.zip/3.0)
+# goagent-cf
 
-## 最近更新
-* [1122 否] 3.2.3 正式版，修复 MacOSX/Linux 平台 CPU 100% 的问题；托盘图标支持设置ADSL拨号网络代理(注意：拨号网络请使用英文名称）。
+使用 Cloudflare (或其他反向代理/CDN) 解决无可用 IP 的问题
 
-## 讨论区
-* https://code.google.com/p/goagent/issues/list
+# Usage
 
-## 文档
-* 简易教程 https://github.com/goagent/goagent/blob/wiki/SimpleGuide.md
-* 图文教程 https://github.com/goagent/goagent/blob/wiki/InstallGuide.md
-* 常见问题 https://github.com/goagent/goagent/blob/wiki/FAQ.md
-* 配置介绍 https://github.com/goagent/goagent/blob/wiki/ConfigIntroduce.md
-* 五毛观止 https://github.com/goagent/goagent/blob/wiki/SpamList.md
-* 更新历史 https://github.com/goagent/goagent/blob/wiki/History.md
+1. 在 GAE 上架设服务端 (参见原版文档)
 
-## 代码
- * proxy.py https://github.com/goagent/goagent
- * python27.exe https://github.com/goagent/pybuild
- * goagent.exe https://github.com/goagent/taskbar
+2. 为服务端配置反向代理/CDN
+
+3. 在 `local/proxy.ini` 中配置服务端的域名
+
+    ```ini
+    [gae]
+    appid = instance1.example.com|instance2.example.com
+    ```
+
+4. 运行 `local/proxy.py`
+
+# Changes
+
+基于 v3.2.3
+
+* 去掉了 runtime, 请自行安装依赖库
+
+# Notes
+
+* Cloudflare free plan 不支持三级域名
+
+* 其他功能未经测试也不会维护, 请谨慎使用

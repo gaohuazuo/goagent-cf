@@ -61,7 +61,7 @@ import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
-sys.path = [(os.path.dirname(__file__) or '.') + '/packages.egg/noarch'] + sys.path + [(os.path.dirname(__file__) or '.') + '/packages.egg/' + sysconfig.get_platform().split('-')[0]]
+sys.path.extend([(os.path.dirname(__file__) or '.') + '/packages.egg/noarch'] + sys.path + [(os.path.dirname(__file__) or '.') + '/packages.egg/' + sysconfig.get_platform().split('-')[0]])
 
 try:
     __import__('gevent.monkey', fromlist=['.']).patch_all()
@@ -451,7 +451,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         logging.info('%s "GAE %s %s %s" %s %s', handler.address_string(), handler.command, handler.path, handler.protocol_version, response.status, response.getheader('Content-Length', '-'))
         try:
             if response.status == 206:
-                fetchservers = ['%s://%s.appspot.com%s' % (self.mode, x, self.path) for x in self.appids]
+                fetchservers = ['%s://%s%s' % (self.mode, x, self.path) for x in self.appids]
                 return RangeFetch(handler, self, response, fetchservers).fetch()
             handler.close_connection = not response.getheader('Content-Length')
             handler.send_response(response.status)
@@ -509,7 +509,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         # prepare GAE request
         request_method = 'POST'
         fetchserver_index = random.randint(0, len(self.appids)-1) if 'Range' in headers else 0
-        fetchserver = kwargs.get('fetchserver') or '%s://%s.appspot.com%s' % (self.mode, self.appids[fetchserver_index], self.path)
+        fetchserver = kwargs.get('fetchserver') or '%s://%s%s' % (self.mode, self.appids[fetchserver_index], self.path)
         request_headers = {}
         if common.GAE_OBFUSCATE:
             request_method = 'GET'
@@ -530,7 +530,7 @@ class GAEFetchPlugin(BaseFetchPlugin):
         # post data
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
-        cache_key = '%s:%d' % (common.HOST_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+        cache_key = '%s:%d' % ('SERVER', 443 if common.GAE_MODE == 'https' else 80)
         headfirst = bool(common.GAE_HEADFIRST)
         response = handler.create_http_request(request_method, fetchserver, request_headers, body, timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key, headfirst=headfirst)
         response.app_status = response.status
@@ -783,10 +783,10 @@ class ProxyGAEProxyHandler(ProxyConnectionMixin, GAEProxyHandler):
         GAEProxyHandler.__init__(self, *args, **kwargs)
 
     def gethostbyname2(self, hostname):
-        for postfix in ('.appspot.com', '.googleusercontent.com'):
-            if hostname.endswith(postfix):
-                host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP.get(postfix) or 'www.google.com'
-                return common.IPLIST_MAP.get(host) or host.split('|')
+        # for postfix in ('.appspot.com', '.googleusercontent.com'):
+        #     if hostname.endswith(postfix):
+        #         host = common.HOST_MAP.get(hostname) or common.HOST_POSTFIX_MAP.get(postfix) or 'www.google.com'
+        #         return common.IPLIST_MAP.get(host) or host.split('|')
         return ProxyConnectionMixin.gethostbyname2(self, hostname)
 
 
@@ -1243,7 +1243,7 @@ class Common(object):
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
         self.GAE_ENABLE = self.CONFIG.getint('gae', 'enable')
-        self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
+        self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid'))
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')

@@ -70,6 +70,9 @@ except ImportError:
             return ''.join(out)
 
 
+ssl_client_ctx = ssl.create_default_context()
+
+
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
@@ -230,7 +233,7 @@ class CertUtil(object):
             sans = ['*'+commonname] + [s for s in sans if s != '*'+commonname]
         else:
             sans = [commonname] + [s for s in sans if s != commonname]
-        #cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
+        cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, CertUtil.ca_digest)
 
         certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
@@ -904,7 +907,7 @@ class BaseHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-        ssl_sock = ssl.wrap_socket(sock)
+        ssl_sock = ssl_client_ctx.wrap_socket(sock, **({'server_hostname': kwargs['server_hostname']} if 'server_hostname' in kwargs else {}))
         return ssl_sock
 
     def create_http_request(self, method, url, headers, body, timeout, **kwargs):
@@ -1607,7 +1610,6 @@ class MultipleConnectionMixin(object):
     max_window = 4
     connect_timeout = 6
     max_timeout = 8
-    ssl_version = ssl.PROTOCOL_SSLv23
     openssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
 
     def gethostbyname2(self, hostname):
@@ -1765,6 +1767,7 @@ class MultipleConnectionMixin(object):
         cache_key = kwargs.get('cache_key', '')
         validate = kwargs.get('validate')
         headfirst = kwargs.get('headfirst')
+        server_hostname = kwargs.get('server_hostname', None)
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             ssl_sock = None
@@ -1782,10 +1785,7 @@ class MultipleConnectionMixin(object):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(min(self.connect_timeout, timeout))
                 # pick up the certificate
-                if not validate:
-                    ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, do_handshake_on_connect=False)
-                else:
-                    ssl_sock = ssl.wrap_socket(sock, ssl_version=self.ssl_version, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cacert.pem'), do_handshake_on_connect=False)
+                ssl_sock = ssl_client_ctx.wrap_socket(sock, do_handshake_on_connect=False, **({'server_hostname': server_hostname} if server_hostname else {}))
                 ssl_sock.settimeout(min(self.connect_timeout, timeout))
                 # start connection time record
                 start_time = time.time()
@@ -1873,10 +1873,9 @@ class MultipleConnectionMixin(object):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.connect_timeout)
                 # pick up the certificate
-                server_hostname = random_hostname() if (cache_key or '').startswith('google_') or hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
                 ssl_sock.set_connect_state()
-                if server_hostname and hasattr(ssl_sock, 'set_tlsext_host_name'):
+                if server_hostname:
                     ssl_sock.set_tlsext_host_name(server_hostname)
                 # start connection time record
                 start_time = time.time()
@@ -2035,7 +2034,7 @@ class MultipleConnectionMixin(object):
         for i in range(max_retry):
             try:
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
-                sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key, headfirst=headfirst)
+                sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key, headfirst=headfirst, server_hostname=host)
                 break
             except StandardError as e:
                 logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
@@ -2154,7 +2153,7 @@ class ProxyConnectionMixin(object):
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         sock = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-        ssl_sock = ssl.wrap_socket(sock)
+        ssl_sock = ssl_client_ctx.wrap_socket(sock, **({'server_hostname': kwargs['server_hostname']} if 'server_hostname' in kwargs else {}))
         return ssl_sock
 
 
