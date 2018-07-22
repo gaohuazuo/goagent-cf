@@ -61,7 +61,6 @@ import sysconfig
 
 reload(sys).setdefaultencoding('UTF-8')
 sys.dont_write_bytecode = True
-sys.path.extend([(os.path.dirname(__file__) or '.') + '/packages.egg/noarch'] + sys.path + [(os.path.dirname(__file__) or '.') + '/packages.egg/' + sysconfig.get_platform().split('-')[0]])
 
 try:
     __import__('gevent.monkey', fromlist=['.']).patch_all()
