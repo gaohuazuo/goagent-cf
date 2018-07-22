@@ -32,6 +32,8 @@
 
 ## Notes
 
+* 这只是一份原型代码, 不会得到任何维护
+
 * Cloudflare free plan 不支持三级域名, 如果提示 TLS handshake failure 可能是这个原因
 
 * 原版 GoAgent 的其他功能可能受影响, 请勿使用
